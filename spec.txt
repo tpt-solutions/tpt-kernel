@@ -1,0 +1,130 @@
+tpt-k Design Specification
+Vision: A modern, formally-verifiable, capability-based microkernel ecosystem designed to supersede legacy monolithic kernels. Built for solo-maintainability, maximum performance, and frictionless adoption via strict permissive licensing.
+1. Core Philosophy & Constraints
+Minimal Trusted Computing Base (TCB): The in-kernel code does exactly four things: thread scheduling, physical memory management, zero-copy IPC, and hardware interrupt routing. Everything else is user-space.
+Memory Safety by Default: 100% Rust. Kernel crates are strictly #![no_std]. No C/C++ bindings in the TCB.
+Zero Ambient Authority: User-space drivers and services run in sandboxed environments. They receive only the exact capabilities (memory ranges, IPC channels, IRQ lines) they request and are granted.
+Strict Licensing Enforcement: Dual-licensed MIT OR Apache-2.0. Absolutely no GPL, LGPL, AGPL, or Apache-only dependencies. Enforced automatically at the CI level.
+Naming Convention:
+All repositories are prefixed with tpt-k-.
+All crates within a repository are prefixed with the repository name (e.g., tpt-k-kernel-mem inside the tpt-k-kernel repo).
+2. System Architecture
+Layer 0: The Microkernel (tpt-k-kernel)
+Runs in Ring 0 (x86_64) or EL1 (AArch64).
+Scheduler: Preemptive, priority-based, heterogeneous-core aware.
+Memory: Physical page frame allocation and IOMMU page table management.
+IPC: Zero-copy, capability-routed message passing between user-space endpoints.
+Interrupts: Hardware interrupts are not handled in the kernel. The kernel maps the interrupt vector to a user-space driver’s notification channel and yields to it.
+Layer 1: The Root Server (tpt-k-root)
+The first and most privileged user-space process.
+Parses hardware topology (ACPI/Device Tree) via tpt-k-hal.
+Acts as the capability authority. It evaluates hardware Intents, makes Reservations on the IOMMU/PCIe bus, and grants Execution capabilities to drivers, tracking everything via tpt-primitives.
+Once bootstrapped, it drops its supreme privileges and operates as a standard capability manager.
+Layer 2: User-Space Services
+Isolated daemons that constitute the actual OS.
+Drivers: Run as isolated processes, sandboxed via WebAssembly (tpt-mcpbox) to guarantee zero ambient authority.
+Filesystem: Your existing tpt-filesystem runs as a privileged user-space daemon, exposed to the rest of the system via an IPC/FUSE bridge.
+Network: User-space TCP/IP stack (tpt-k-userland-net) utilizing zero-copy IPC to pass packets directly from the NIC driver to applications.
+3. Repository & Crate Topology
+Strict adherence to the tpt-k- repo prefix and repo-name crate prefix.
+1. tpt-k-kernel (The Microkernel Core)
+Strictly #![no_std]. The TCB.
+tpt-k-kernel: Main binary crate. Early boot entry, stack setup, orchestration.
+tpt-k-kernel-sched: Preemptive thread scheduler and CPU context switching.
+tpt-k-kernel-mem: Physical page frame allocator and virtual memory management.
+tpt-k-kernel-ipc: Kernel-side IPC routing, syscall entry/exit, capability translation.
+tpt-k-kernel-arch-x86_64: x86_64 specific primitives (GDT, IDT, APIC, paging).
+tpt-k-kernel-arch-aarch64: ARM64 specific primitives (Exception levels, MMU, GIC).
+2. tpt-k-root (The Root Server)
+tpt-k-root: Main binary for the root server daemon.
+tpt-k-root-caps: Capability generation, delegation, and revocation logic.
+tpt-k-root-spawn: Process spawning, ELF/WASM loading, and lifecycle management.
+3. tpt-k-hal (Hardware Abstraction & Discovery)
+Written from scratch to avoid GPL-licensed parsers.
+tpt-k-hal: Core library and common data structures for hardware representation.
+tpt-k-hal-acpi: Parser for ACPI tables (MADT, MCFG, DSDT/SSDT).
+tpt-k-hal-fdt: Parser for Flattened Device Trees (FDT).
+tpt-k-hal-pci: PCIe configuration space enumerator and BAR parser.
+tpt-k-hal-usb: USB descriptor parser.
+4. tpt-k-ipc (User-Space IPC & Capabilities)
+tpt-k-ipc: Main client/server framework for sending and receiving IPC messages.
+tpt-k-ipc-cap: Definitions for capability tokens, rights, and unforgeable handles.
+tpt-k-ipc-serde: Zero-copy serialization, deserialization, and checksumming for IPC payloads.
+5. tpt-k-drivers (User-Space Drivers)
+tpt-k-drivers: Driver manager daemon that monitors health and restarts crashed drivers.
+tpt-k-drivers-nvme: User-space NVMe block device driver.
+tpt-k-drivers-virtio: VirtIO network and block drivers (for QEMU testing).
+tpt-k-drivers-usb-hid: Universal USB Human Interface Device driver.
+tpt-k-drivers-synth: The "Automatic Driver" engine. Reads hardware IDs, matches against known layouts, and dynamically generates/loads micro-drivers.
+6. tpt-k-boot (The Bootloader)
+tpt-k-boot: Main UEFI application binary.
+tpt-k-boot-efi: Safe Rust wrappers around UEFI boot services and runtime services.
+tpt-k-boot-fs: Minimal, read-only FAT32 filesystem driver only to locate and load the kernel and root server images.
+7. tpt-k-userland (Core OS Services)
+tpt-k-userland: Meta-crate and main interactive shell binary.
+tpt-k-userland-shell: CLI shell, command parser, and job control.
+tpt-k-userland-net: User-space TCP/IP network stack daemon.
+tpt-filesystem (Existing Repo): Integrated here via a thin tpt-k-fs-bridge crate that translates tpt-k-ipc block/byte requests into the API that your existing CoW filesystem expects.
+tpt-k-userland-libc: Minimal POSIX shim translating standard C library calls into tpt-k-ipc messages.
+8. tpt-k-toolchain (Build System & Image Generation)
+tpt-k-toolchain: Main CLI tool (tpt-k-build) that resolves dependencies, cross-compiles all workspaces, and links final binaries.
+tpt-k-toolchain-iso: Logic to assemble compiled binaries, bootloader, and root filesystem into a bootable UEFI ISO or raw disk image.
+4. Integration of Existing TPT Ecosystem
+You are not starting from scratch. Your existing repositories provide the rigorous foundation that makes this feasible for a solo maintainer.
+Existing TPT Repo
+Integration Point in tpt-k
+Benefit
+tpt-primitives
+tpt-k-ipc-cap, tpt-k-root-caps
+Provides canonical identity (CapabilityId, TraceId), deterministic CBOR encoding, and SHA-256 hashing for unforgeable capability tokens.
+tpt-simd
+tpt-k-kernel-mem, tpt-k-ipc-serde
+Provides no_std AVX2/NEON acceleration for zero-copy IPC buffer transfers, page clearing, and rapid payload checksumming, with graceful scalar fallbacks.
+tpt-fabric
+tpt-k-root
+Provides the semantic execution model (Intent → Reservation → Execution → Trace) for the Root Server to manage hardware allocation safely.
+tpt-mcpbox
+tpt-k-drivers
+Sandboxes auto-generated or third-party user-space drivers in WebAssembly, guaranteeing zero ambient authority and instant trapping of misbehaving code.
+tpt-concord
+Entire tpt-k workspace
+Forms the Assurance Graph. Links formal proofs, property tests, and fuzzing campaigns to kernel specifications, answering exactly what is proven and what remains unproven.
+tpt-cargo-vitals
+tpt-k-toolchain CI
+Replaces manual license auditing. Hard-fails the build in <100ms if any transitive dependency introduces a GPL, Apache-only, or non-permissive license, or a known CVE.
+tpt-semadiff
+Git Workflow
+Configured as the default git difftool. Shows semantic, AST-aware changes (e.g., "[MOVED] function") when reviewing AI-generated or refactored kernel code, saving hours of review time.
+5. Development & CI/CD Pipeline
+To protect your time as a solo maintainer, automation is non-negotiable.
+Code Generation & Review: AI or tooling generates driver boilerplate. You review it locally using tpt-semadiff to instantly see semantic changes, ignoring whitespace or formatting noise.
+Local Build: tpt-k-build compiles the workspace. tpt-cargo-vitals runs locally to guarantee no license creep or vulnerable dependencies have been introduced.
+CI Gate: GitHub Actions runs tpt-cargo-vitals check --enforce-license MIT --ci-mode.
+Formal Assurance: tpt-concord aggregates the test results, fuzzing campaigns, and any formal verification artifacts (e.g., from your SMT solver tooling) into an Assurance Graph. The CI gate fails if the graph shows unproven critical claims (e.g., "IPC capability check can be bypassed").
+Artifact Generation: tpt-k-toolchain-iso produces a bootable QEMU-ready image.
+6. Phased Implementation Strategy
+Do not build everything at once. Follow this strict, incremental path to maintain momentum.
+Phase 1: Boot & Hello World (Weeks 1-4)
+Initialize tpt-k-boot and tpt-k-kernel.
+Get the UEFI bootloader to load the kernel binary into memory.
+Set up basic x86_64/AArch64 identity paging and print "Hello tpt-k" to the serial console/VGA.
+Milestone: Custom kernel booting in QEMU.
+Phase 2: IPC & The Root Server (Weeks 5-10)
+Implement zero-copy IPC and syscall entry/exit in tpt-k-kernel-ipc.
+Build tpt-k-root and tpt-k-root-spawn.
+Get the kernel to spawn the root server and pass a simple capability token via IPC, verified using tpt-primitives.
+Milestone: A microkernel capable of context switching and secure message passing.
+Phase 3: Hardware & Interrupts (Weeks 11-16)
+Implement interrupt routing in the kernel.
+Build tpt-k-hal-pci and tpt-k-hal-acpi from scratch.
+Write a user-space VirtIO console or keyboard driver in tpt-k-drivers, sandboxed via tpt-mcpbox, that receives interrupts via IPC.
+Milestone: The kernel can safely talk to hardware without crashing, and driver crashes do not panic the kernel.
+Phase 4: Storage & Filesystem (Weeks 17-24)
+Write a user-space NVMe or VirtIO-Block driver.
+Integrate tpt-filesystem via the IPC/FUSE bridge.
+Mount the filesystem and read a file from user space.
+Milestone: The system can persist and read state from a virtual or physical disk.
+Phase 5: Formal Assurance & Automation (Ongoing)
+Define core IPC and capability invariants in tpt-concord.
+Wire tpt-cargo-vitals and tpt-semadiff into the daily workflow.
+Begin implementing tpt-k-drivers-synth for automatic, datasheet-driven driver generation.

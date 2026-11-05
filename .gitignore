@@ -1,0 +1,26 @@
+# Rust build output
+target/
+
+# Keep Cargo.lock: tpt-k is a binary/OS project, so builds should be reproducible
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local environment and secrets
+.env
+.env.*
+*.local
+
+# QEMU / boot artifacts
+*.img
+*.iso
+*.bin
+*.elf
+
+# Claude Code local settings
+.claude/settings.local.json
