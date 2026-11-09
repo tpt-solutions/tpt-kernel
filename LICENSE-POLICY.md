@@ -30,12 +30,15 @@ These licenses may be used in dependencies, including transitive ones:
 
 - MIT
 - Apache-2.0, only when dual-licensed with MIT (`MIT OR Apache-2.0`)
+- Apache-2.0 WITH LLVM-exception (approved by the maintainer; used by the Cranelift/Wasmtime stack)
 - BSD (2-clause and 3-clause)
 - ISC
 - Zlib
 - Unlicense
 - CC0-1.0
 - Unicode (Unicode-DFS-2016 and similar)
+- MIT-0 (added 2026-11-09: MIT without the attribution requirement)
+- BSL-1.0 (added 2026-11-09: Boost Software License, permissive; needed for `ryu`, which is `Apache-2.0 OR BSL-1.0`)
 
 ## Dependency denylist
 
@@ -46,7 +49,8 @@ any code that is linked into the kernel or trusted computing base:
 - LGPL (any version)
 - AGPL (any version)
 - MPL (any version)
-- Apache-2.0 alone, without an MIT option
+- Apache-2.0 alone, without an MIT option, in any shipped (normal) dependency.
+  Allowed in dev-dependencies only (decided 2026-11-10).
 - Any license not on the allowlist
 
 ## Enforcement
@@ -65,6 +69,12 @@ any code that is linked into the kernel or trusted computing base:
 No exceptions are granted by default. A proposed exception requires a written
 justification in the pull request, and a maintainer must approve it. An approved
 exception is recorded in this file with its date and reason.
+
+Approved exceptions:
+
+- **`webpki-roots` 1.x, `CDLA-Permissive-2.0`** (approved 2026-11-09, `tpt-mcpbox`).
+  This is a data license covering the bundled Mozilla CA root store, not code. It
+  is used for TLS trust roots. Scope: this crate only.
 
 ## Open items
 
