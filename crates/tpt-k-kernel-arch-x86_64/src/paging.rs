@@ -165,9 +165,9 @@ impl<'a> PageTables<'a> {
         let pdpt = self.child(self.root, 0)?;
         for gigabyte in 0..gigabytes.min(ENTRIES as u64) {
             let pd = self.child(pdpt, gigabyte as usize)?;
-            for entry in 0..ENTRIES {
+            for (entry, slot) in self.pool[pd].0.iter_mut().enumerate() {
                 let phys = gigabyte * GIGABYTE + entry as u64 * HUGE_PAGE_SIZE;
-                self.pool[pd].0[entry] = phys | PRESENT | WRITABLE | HUGE;
+                *slot = phys | PRESENT | WRITABLE | HUGE;
             }
         }
         Ok(())
@@ -272,8 +272,8 @@ impl<'a> PageTables<'a> {
         let base = entry & ADDRESS_MASK & !(HUGE_PAGE_SIZE - 1);
         let flags = entry & 0xFFF & !HUGE;
         let pt = self.alloc()?;
-        for page in 0..ENTRIES {
-            self.pool[pt].0[page] = (base + page as u64 * PAGE_SIZE) | flags;
+        for (page, slot) in self.pool[pt].0.iter_mut().enumerate() {
+            *slot = (base + page as u64 * PAGE_SIZE) | flags;
         }
         let address = self.table_address(pt);
         self.pool[pd].0[index] = address | PRESENT | WRITABLE | USER;

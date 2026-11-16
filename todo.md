@@ -57,8 +57,8 @@ Rules that apply to every task:
 - [x] Merge the 8 tpt-k repos into this monorepo (2026-11-17): crates under `crates/`, one root workspace, one `Cargo.lock`, per-layer READMEs in `docs/layers/`, per-layer todos in `docs/todos/`
 - [x] `scripts/fetch-deps.sh` (renamed from `clone-repos.sh`) clones or fast-forwards the external TPT dependency repos only (2026-11-17)
 - [x] Kernel link uses its linker script via `scripts/build-kernel.sh`, not a workspace-wide rustflag (2026-11-17)
-- [ ] Decide the TCB status of `tpt-k-root*` and `tpt-k-ipc`: they are std scaffolds and do not build for `x86_64-unknown-none` (2026-11-17: treated as user-space, built for host)
-- [ ] Fix two `clippy::needless_range_loop` lints in `tpt-k-kernel-arch-x86_64/src/paging.rs` (lines 168, 275), which fail `-D warnings` in the `tcb-nostd` CI group (2026-11-17)
+- [x] Decide the TCB status of `tpt-k-root*` and `tpt-k-ipc`: they are std scaffolds and do not build for `x86_64-unknown-none`. Decided 2026-11-17: user-space, built for host
+- [x] Fix two `clippy::needless_range_loop` lints (fixed 2026-11-17, smoke test re-run) in `tpt-k-kernel-arch-x86_64/src/paging.rs` (lines 168, 275), which fail `-D warnings` in the `tcb-nostd` CI group (2026-11-17)
 
 ### Crate scaffolds (empty, correctly named, building)
 - [x] `tpt-k-kernel`: `tpt-k-kernel`, `-sched`, `-mem`, `-ipc`, `-arch-x86_64`, `-arch-aarch64` (stub)
