@@ -20,7 +20,7 @@ Gate used: `tpt-cargo-vitals check --enforce-license "MIT,Unicode-3.0,Unicode-DF
 
 1. **tpt-mcpbox: 5 known CVEs** in `wasmtime 48.0.7` and `wasmtime-wasi 48.0.7`/`wasmtime-wasi-http`. Fixed in `>= 48.0.8`:
    RUSTSEC-2026-0420, -0421, -0422, -0423, -0424. Fix: bump `wasmtime` to 48.0.8 or later and refresh `Cargo.lock`.
-2. **tpt-primitives cannot be `no_std`.** It depends on `ciborium` 0.2.2, and `ciborium-io` requires `std`. The spec puts this crate under `tpt-k-ipc-cap` and `tpt-k-root-caps`, so this blocks the Phase 2 capability work. Options: switch to a `no_std` CBOR crate, or make `ciborium` optional behind a `std` feature and provide a `no_std` encoder.
+2. **RESOLVED 2026-11-16: tpt-primitives is `no_std`.** It now uses `cbor4ii` and an in-crate CBOR tree; `ciborium` is removed. Canonical bytes are unchanged. Original finding: tpt-primitives cannot be `no_std`. It depends on `ciborium` 0.2.2, and `ciborium-io` requires `std`. The spec puts this crate under `tpt-k-ipc-cap` and `tpt-k-root-caps`, so this blocks the Phase 2 capability work. Options: switch to a `no_std` CBOR crate, or make `ciborium` optional behind a `std` feature and provide a `no_std` encoder.
 3. **Apache-2.0-only dependencies** (policy denies these) in primitives, simd, mcpbox, concord:
    `ciborium`, `ciborium-io`, `ciborium-ll`, `borsh-derive`, `sync_wrapper`, `rpassword`, `rtoolbox`, `unicode-general-category`, `witx`, `ring` (`Apache-2.0 AND ISC`), `regorus` (`MIT AND Apache-2.0 AND BSD-3-Clause`).
    Each needs a replacement, or a documented exception in LICENSE-POLICY.md.
@@ -34,6 +34,11 @@ Gate used: `tpt-cargo-vitals check --enforce-license "MIT,Unicode-3.0,Unicode-DF
 ## Tool limitation
 
 `tpt-cargo-vitals` ignores `WITH` exceptions and judges only the base license. So `Apache-2.0 WITH LLVM-exception` is evaluated as plain `Apache-2.0`. Listing it in `--enforce-license` requires listing `Apache-2.0`, which would also let Apache-only dependencies through. The gate was therefore left strict, and the cranelift/wasmtime crates still show as violations. Fix in vitals: match the full `X WITH Y` expression against the allowlist.
+
+## Update 2026-11-16
+
+- **tpt-mcpbox:** `wasmtime` is at 48.0.8, so the five RUSTSEC wasmtime advisories are gone. The remaining advisories come from `rustls-rustcrypto` 0.0.2-alpha (`rsa`, `crypto-bigint`, `rustls-webpki 0.102.8`), accepted in `tpt-mcpbox/deny.toml` until 2027-02-09. `cargo deny check advisories licenses` passes. `tpt-cargo-vitals` does not read `deny.toml`, so its gate still reports these.
+- **tpt-primitives:** no longer depends on `ciborium`; builds `no_std`.
 
 ## `no_std` results
 

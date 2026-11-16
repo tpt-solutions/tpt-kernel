@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Shared CI for every tpt-k repo. Each repo's ci.yml calls this workflow and
+# passes its own targets and checks. The caller's checkout is what gets built.
+name: Reusable CI
+
+on:
+  workflow_call:
+    inputs:
+      clippy_args:
+        description: Arguments appended to `cargo clippy --workspace`
+        type: string
+        default: "--target x86_64-unknown-none"
+      build_args:
+        description: Arguments appended to `cargo build --workspace`
+        type: string
+        default: "--target x86_64-unknown-none"
+      run_tests:
+        description: Run `cargo test --workspace`
+        type: boolean
+        default: false
+      test_args:
+        description: Arguments for `cargo test`, used instead of --workspace when set
+        type: string
+        default: ""
+      tcb_checks:
+        description: No build.rs and no -sys (C binding) dependencies
+        type: boolean
+        default: false
+      nostd_roots:
+        description: Every crate root under crates/ must declare #![no_std]
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Installs the toolchain, components, and targets pinned in rust-toolchain.toml.
+      - name: Show pinned toolchain
+        run: rustup show
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace ${{ inputs.clippy_args }} -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace ${{ inputs.build_args }}
+
+      - name: Test
+        if: inputs.run_tests || inputs.test_args != ''
+        run: cargo test ${{ inputs.test_args != '' && inputs.test_args || '--workspace' }}
+
+      - name: "TCB rules: no build scripts or -sys dependencies"
+        if: inputs.tcb_checks
+        run: |
+          if find . -path ./target -prune -o -name build.rs -print | grep -q .; then
+            echo "build.rs is not allowed in kernel-side crates"; exit 1
+          fi
+          if grep -rEn '^[A-Za-z0-9_-]+-sys[[:space:]]*=' --include=Cargo.toml . ; then
+            echo "-sys (C binding) dependency is not allowed in kernel-side crates"; exit 1
+          fi
+          echo "no build scripts or -sys dependencies"
+
+      - name: no_std declared in every crate root
+        if: inputs.nostd_roots
+        run: |
+          status=0
+          for f in $(find crates -path '*/src/lib.rs' -o -path '*/src/main.rs'); do
+            if ! grep -q '^#!\[no_std\]' "$f"; then
+              echo "missing #![no_std]: $f"; status=1
+            fi
+          done
+          [ "$status" -eq 0 ] && echo "all crate roots are #![no_std]"
+          exit $status
+
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate per LICENSE-POLICY.md: fails on any non-allowed license or known CVE.
+      # Apache-2.0 is omitted on purpose: "MIT OR Apache-2.0" still passes via MIT.
+      - name: Install tpt-cargo-vitals
+        run: cargo install --git https://github.com/tpt-solutions/tpt-cargo-vitals --locked
+
+      - name: Refresh advisory cache
+        run: tpt-cargo-vitals update
+
+      - name: License and CVE gate
+        run: >-
+          tpt-cargo-vitals check --path .
+          --enforce-license "MIT,Unicode-3.0,Unicode-DFS-2016,BSD-2-Clause,BSD-3-Clause,ISC,Zlib,Unlicense,CC0-1.0"
+          --ci-mode
