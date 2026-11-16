@@ -6,8 +6,8 @@ Memory Safety by Default: 100% Rust. Kernel crates are strictly #![no_std]. No C
 Zero Ambient Authority: User-space drivers and services run in sandboxed environments. They receive only the exact capabilities (memory ranges, IPC channels, IRQ lines) they request and are granted.
 Strict Licensing Enforcement: Dual-licensed MIT OR Apache-2.0. Absolutely no GPL, LGPL, AGPL, or Apache-only dependencies. Enforced automatically at the CI level.
 Naming Convention:
-All repositories are prefixed with tpt-k-.
-All crates within a repository are prefixed with the repository name (e.g., tpt-k-kernel-mem inside the tpt-k-kernel repo).
+All crates live in one repository (tpt-kernel) under crates/, and are prefixed tpt-k-.
+Each crate's name starts with the layer it belongs to (e.g., tpt-k-kernel-mem belongs to the tpt-k-kernel layer).
 2. System Architecture
 Layer 0: The Microkernel (tpt-k-kernel)
 Runs in Ring 0 (x86_64) or EL1 (AArch64).
@@ -26,7 +26,7 @@ Drivers: Run as isolated processes, sandboxed via WebAssembly (tpt-mcpbox) to gu
 Filesystem: Your existing tpt-filesystem runs as a privileged user-space daemon, exposed to the rest of the system via an IPC/FUSE bridge.
 Network: User-space TCP/IP stack (tpt-k-userland-net) utilizing zero-copy IPC to pass packets directly from the NIC driver to applications.
 3. Repository & Crate Topology
-Strict adherence to the tpt-k- repo prefix and repo-name crate prefix.
+Layers are directories in one repository, not separate repositories. Crate names keep the tpt-k- prefix and the layer name.
 1. tpt-k-kernel (The Microkernel Core)
 Strictly #![no_std]. The TCB.
 tpt-k-kernel: Main binary crate. Early boot entry, stack setup, orchestration.

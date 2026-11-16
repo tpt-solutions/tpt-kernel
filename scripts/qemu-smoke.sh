@@ -9,8 +9,6 @@
 # Usage: scripts/qemu-smoke.sh
 #
 # Environment overrides:
-#   KERNEL_REPO  path to tpt-k-kernel   (default: ../tpt-k-kernel from here)
-#   BOOT_REPO    path to tpt-k-boot     (default: ../tpt-k-boot from here)
 #   QEMU         qemu-system-x86_64 binary
 #   OVMF_CODE    OVMF code image, read-only
 #   OVMF_VARS    OVMF vars template, copied per run
@@ -20,9 +18,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
-KERNEL_REPO="${KERNEL_REPO:-$ROOT/tpt-k-kernel}"
-BOOT_REPO="${BOOT_REPO:-$ROOT/tpt-k-boot}"
+ROOT="$(cd "$HERE/.." && pwd)"
 TIMEOUT="${TIMEOUT:-60}"
 OUT="${OUT:-$(mktemp -d)}"
 
@@ -105,15 +101,14 @@ OVMF_VARS="${OVMF_VARS:-$(first_file \
 [ -n "$OVMF_CODE" ] || die "OVMF code image not found; set OVMF_CODE"
 [ -n "$OVMF_VARS" ] || die "OVMF vars template not found; set OVMF_VARS"
 
-echo "qemu-smoke: building kernel ($KERNEL_REPO)"
-(cd "$KERNEL_REPO" && cargo build --workspace --target x86_64-unknown-none) ||
-    die "kernel build failed"
-echo "qemu-smoke: building loader ($BOOT_REPO)"
-(cd "$BOOT_REPO" && cargo build --workspace --target x86_64-unknown-uefi) ||
+echo "qemu-smoke: building kernel"
+(cd "$ROOT" && bash scripts/build-kernel.sh) || die "kernel build failed"
+echo "qemu-smoke: building loader"
+(cd "$ROOT" && cargo build -p tpt-k-boot --target x86_64-unknown-uefi) ||
     die "loader build failed"
 
-KERNEL_ELF="$KERNEL_REPO/target/x86_64-unknown-none/debug/tpt-k-kernel"
-LOADER_EFI="$BOOT_REPO/target/x86_64-unknown-uefi/debug/tpt-k-boot.efi"
+KERNEL_ELF="$ROOT/target/x86_64-unknown-none/debug/tpt-k-kernel"
+LOADER_EFI="$ROOT/target/x86_64-unknown-uefi/debug/tpt-k-boot.efi"
 [ -f "$KERNEL_ELF" ] || die "missing $KERNEL_ELF"
 [ -f "$LOADER_EFI" ] || die "missing $LOADER_EFI"
 

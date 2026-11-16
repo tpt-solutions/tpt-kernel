@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
-# Clone (or update) every tpt-k repo and the TPT repos it path/git-links to,
-# side by side, so that relative path dependencies resolve.
+# Clone (or update) the existing TPT repos that tpt-k consumes as git/path
+# dependencies, side by side with this repo. The tpt-k crates themselves live
+# in this repo under crates/.
 #
-# Usage: scripts/clone-repos.sh [target-dir]
+# Usage: scripts/fetch-deps.sh [target-dir]
 #   target-dir defaults to the parent of this repo (the "2 WIP" folder).
 #
 # Behaviour per repo:
@@ -17,18 +18,6 @@ set -u
 
 ORG_URL="https://github.com/tpt-solutions"
 ROOT="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
-
-# tpt-k repos (one per row in todo.md's Repositories section)
-TPTK_REPOS=(
-  tpt-k-boot
-  tpt-k-kernel
-  tpt-k-root
-  tpt-k-hal
-  tpt-k-ipc
-  tpt-k-drivers
-  tpt-k-userland
-  tpt-k-toolchain
-)
 
 # Existing TPT repos consumed as git/path dependencies
 TPT_DEP_REPOS=(
@@ -89,7 +78,7 @@ sync_repo() {
 }
 
 echo "Target: $ROOT"
-for r in "${TPTK_REPOS[@]}" "${TPT_DEP_REPOS[@]}"; do
+for r in "${TPT_DEP_REPOS[@]}"; do
   sync_repo "$r"
 done
 

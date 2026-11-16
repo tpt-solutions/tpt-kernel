@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-userland-fs-bridge"
+version = "0.0.0"
+description = "tpt-k filesystem bridge: translates IPC requests to tpt-filesystem (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-userland-net"
+version = "0.0.0"
+description = "tpt-k user-space TCP/IP network stack daemon (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

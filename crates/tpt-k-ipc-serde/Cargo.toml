@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-ipc-serde"
+version = "0.0.0"
+description = "tpt-k IPC serialization: zero-copy (de)serialization and checksumming (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

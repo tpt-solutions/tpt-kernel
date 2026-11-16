@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-userland"
+version = "0.0.0"
+description = "tpt-k userland meta-crate and interactive shell binary (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-boot"
+version = "0.0.0"
+description = "tpt-k UEFI bootloader application (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+tpt-k-boot-efi = { path = "../tpt-k-boot-efi" }
+tpt-k-boot-fs = { path = "../tpt-k-boot-fs" }
+
+[[bin]]
+name = "tpt-k-boot"
+path = "src/main.rs"
+test = false
+doc = false

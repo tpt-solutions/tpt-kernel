@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-boot-fs"
+version = "0.0.0"
+description = "tpt-k minimal read-only FAT32 driver for loading kernel and root images (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

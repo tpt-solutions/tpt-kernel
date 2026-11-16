@@ -2,26 +2,29 @@
 
 Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.txt)
 
-This file holds the project-wide work and the milestones. Each repo has its own
-`todo.md` with the tasks it owns. Keep the two in step: when a task moves or
+This file holds the project-wide work and the milestones. The tasks for each
+layer live in `docs/todos/<layer>.md`. Keep the two in step: when a task moves or
 closes, update both.
 
-| Repo | Owns | Its todo |
+The tpt-k layers are directories in this one repo. The existing TPT dependencies
+are separate repos, consumed by path or git.
+
+| Layer | Owns | Its todo |
 |---|---|---|
-| `tpt-k-boot` | UEFI loader, boot handoff | [todo](../tpt-k-boot/todo.md) |
-| `tpt-k-kernel` | kernel core, memory, scheduler, arch | [todo](../tpt-k-kernel/todo.md) |
-| `tpt-k-root` | root server, capability generation | [todo](../tpt-k-root/todo.md) |
-| `tpt-k-hal` | ACPI, PCI, FDT, USB parsers | [todo](../tpt-k-hal/todo.md) |
-| `tpt-k-ipc` | user-space IPC libraries | [todo](../tpt-k-ipc/todo.md) |
-| `tpt-k-drivers` | driver host, virtio, nvme, usb-hid, synth | [todo](../tpt-k-drivers/todo.md) |
-| `tpt-k-userland` | shell, libc, network, fs bridge | [todo](../tpt-k-userland/todo.md) |
-| `tpt-k-toolchain` | build CLI, ISO and image assembly | [todo](../tpt-k-toolchain/todo.md) |
-| `tpt-crypto-rustls` | rustls provider over `tpt-crypto` | [todo](../tpt-crypto-rustls/todo.md) |
-| `tpt-crypto` | constant-time crypto substrate | [todo](../tpt-crypto/todo.md) |
-| `tpt-mcpbox` | MCP host (TPT dependency) | [todo](../tpt-mcpbox/todo.md) |
+| `boot` | UEFI loader, boot handoff | [todo](docs/todos/boot.md) |
+| `kernel` | kernel core, memory, scheduler, arch | [todo](docs/todos/kernel.md) |
+| `root` | root server, capability generation | [todo](docs/todos/root.md) |
+| `hal` | ACPI, PCI, FDT, USB parsers | [todo](docs/todos/hal.md) |
+| `ipc` | user-space IPC libraries | [todo](docs/todos/ipc.md) |
+| `drivers` | driver host, virtio, nvme, usb-hid, synth | [todo](docs/todos/drivers.md) |
+| `userland` | shell, libc, network, fs bridge | [todo](docs/todos/userland.md) |
+| `toolchain` | build CLI, ISO and image assembly | [todo](docs/todos/toolchain.md) |
+| `tpt-crypto-rustls` | rustls provider over `tpt-crypto` (external repo) | [todo](../tpt-crypto-rustls/todo.md) |
+| `tpt-crypto` | constant-time crypto substrate (external repo) | [todo](../tpt-crypto/todo.md) |
+| `tpt-mcpbox` | MCP host (external TPT dependency) | [todo](../tpt-mcpbox/todo.md) |
 
 Rules that apply to every task:
-- Repos are prefixed `tpt-k-`; crates are prefixed with their repo name.
+- Crates are prefixed `tpt-k-` and live under `crates/`; the crate name starts with its layer.
 - Kernel/TCB crates are `#![no_std]`, 100% Rust, no C/C++ bindings.
 - No GPL/LGPL/AGPL/MPL or Apache-only dependencies. Apache-2.0 alone is allowed in dev-dependencies only. Allowed: MIT, Apache-2.0 only when dual with MIT, BSD, ISC, Zlib, Unlicense/CC0, Unicode, MIT-0, BSL-1.0, and the scoped exceptions in [LICENSE-POLICY.md](LICENSE-POLICY.md).
 - x86_64 + QEMU first. AArch64 and real hardware come later.
@@ -50,17 +53,12 @@ Rules that apply to every task:
 - [ ] Get an external audit of `tpt-crypto` and `tpt-crypto-rustls` before either carries real traffic
 
 ### Repositories
-- [x] Create repo `tpt-k-kernel` (local, no remote yet)
-- [x] Create repo `tpt-k-root` (local, no remote yet)
-- [x] Create repo `tpt-k-hal` (local, no remote yet)
-- [x] Create repo `tpt-k-ipc` (local, no remote yet)
-- [x] Create repo `tpt-k-drivers` (local, no remote yet)
-- [x] Create repo `tpt-k-boot` (local, no remote yet)
-- [x] Create repo `tpt-k-userland` (local, no remote yet)
-- [x] Create repo `tpt-k-toolchain` (local, no remote yet)
-- [x] Meta/coordination: `scripts/clone-repos.sh` clones or fast-forwards all 8 tpt-k repos plus the path-linked TPT repos side by side (2026-11-16)
-- [x] Per-repo: Cargo workspace, README, license files, `.gitignore`, `rust-toolchain.toml`
-- [x] Per-repo: `todo.md` (2026-11-10)
+- [x] Create the 8 tpt-k repos (2026-11-10 to 2026-11-16, local only)
+- [x] Merge the 8 tpt-k repos into this monorepo (2026-11-17): crates under `crates/`, one root workspace, one `Cargo.lock`, per-layer READMEs in `docs/layers/`, per-layer todos in `docs/todos/`
+- [x] `scripts/fetch-deps.sh` (renamed from `clone-repos.sh`) clones or fast-forwards the external TPT dependency repos only (2026-11-17)
+- [x] Kernel link uses its linker script via `scripts/build-kernel.sh`, not a workspace-wide rustflag (2026-11-17)
+- [ ] Decide the TCB status of `tpt-k-root*` and `tpt-k-ipc`: they are std scaffolds and do not build for `x86_64-unknown-none` (2026-11-17: treated as user-space, built for host)
+- [ ] Fix two `clippy::needless_range_loop` lints in `tpt-k-kernel-arch-x86_64/src/paging.rs` (lines 168, 275), which fail `-D warnings` in the `tcb-nostd` CI group (2026-11-17)
 
 ### Crate scaffolds (empty, correctly named, building)
 - [x] `tpt-k-kernel`: `tpt-k-kernel`, `-sched`, `-mem`, `-ipc`, `-arch-x86_64`, `-arch-aarch64` (stub)
@@ -89,7 +87,7 @@ Rules that apply to every task:
 - [x] CI gate: `tpt-cargo-vitals check --enforce-license MIT --ci-mode` (run with the policy allowlist; see DEP-AUDIT.md)
 - [x] CI: QEMU boot smoke test job (2026-11-16: `.github/workflows/qemu-smoke.yml`; not yet run on GitHub)
 - [x] CI: `no_std` / no-C-bindings check on TCB crates
-- [x] CI: reusable workflow shared across the 8 repos (2026-11-16: `.github/workflows/reusable-ci.yml` in tpt-kernel; each repo's `ci.yml` calls it with its own targets)
+- [x] CI: `ci.yml` runs one reusable check job per build group (2026-11-16 reusable workflow; 2026-11-17 groups: tcb-nostd, kernel-image, uefi-loader, userspace, license)
 
 ---
 
@@ -98,14 +96,14 @@ Rules that apply to every task:
 Each milestone is closed by the tasks in the owning repos. Tick it here only when
 those repo todos are done.
 
-- [x] **M1 (Phase 1):** custom kernel boots in QEMU via `tpt-k-boot` (repos: `tpt-k-boot`, `tpt-k-kernel`) (2026-11-16: `scripts/qemu-smoke.sh` passes under OVMF)
-- [ ] **M2 (Phase 2):** microkernel with context switching and secure message passing (repos: `tpt-k-kernel`, `tpt-k-root`, `tpt-k-ipc`)
+- [x] **M1 (Phase 1):** custom kernel boots in QEMU via `tpt-k-boot` (layers: `tpt-k-boot`, `tpt-k-kernel`) (2026-11-16: `scripts/qemu-smoke.sh` passes under OVMF)
+- [ ] **M2 (Phase 2):** microkernel with context switching and secure message passing (layers: `tpt-k-kernel`, `tpt-k-root`, `tpt-k-ipc`)
   - 2026-11-17 progress: the kernel builds its own page tables and address spaces (identity map, a remapped page, and per-process spaces forked from the boot space, checked by two isolated user processes); a frame allocator; timer-driven (local APIC, calibrated against the PIT, 100 Hz) round-robin scheduling with blocking and per-thread kernel stacks and address spaces; per-thread capability tables with raw handles; queued synchronous endpoints; a ring-3 thread that sends, receives, writes and exits through `syscall`. The QEMU smoke test covers all of it. a grant syscall that copies handles between threads with rights narrowing; revocation across granted copies, including transitive copies in other tables; page tables allocated through the frame allocator; frames from the loader's memory map; a root thread that spawns a child in its own address space, granting it a narrowed handle (`SYS_SPAWN`), and sends it a message. Open: the framebuffer and ACPI in the handoff, general memory objects and bulk messages, IO-APIC routing for devices, a spawn that takes a program from the caller's memory rather than a fixed table, and the `tpt-k-root` repo's own checklist.
-- [ ] **M3 (Phase 3):** kernel talks to hardware safely; driver crashes do not panic the kernel (repos: `tpt-k-kernel`, `tpt-k-root`, `tpt-k-hal`, `tpt-k-drivers`)
-- [ ] **M4 (Phase 4):** system persists and reads state from a virtual disk (repos: `tpt-k-drivers`, `tpt-k-ipc`, `tpt-k-userland`)
-- [ ] **M5 (Phase 6):** parity: Phases 1–4 milestones pass on AArch64 (repos: `tpt-k-kernel`, `tpt-k-hal`, `tpt-k-boot`, `tpt-k-ipc`)
-- [ ] **M6 (Phase 7):** bootable QEMU-ready image artifact in CI, with networking (repos: `tpt-k-toolchain`, `tpt-k-userland`, `tpt-k-drivers`)
-- [ ] **M7 (Phase 8):** USB input and dynamically generated micro-drivers under review (repos: `tpt-k-hal`, `tpt-k-drivers`)
+- [ ] **M3 (Phase 3):** kernel talks to hardware safely; driver crashes do not panic the kernel (layers: `tpt-k-kernel`, `tpt-k-root`, `tpt-k-hal`, `tpt-k-drivers`)
+- [ ] **M4 (Phase 4):** system persists and reads state from a virtual disk (layers: `tpt-k-drivers`, `tpt-k-ipc`, `tpt-k-userland`)
+- [ ] **M5 (Phase 6):** parity: Phases 1–4 milestones pass on AArch64 (layers: `tpt-k-kernel`, `tpt-k-hal`, `tpt-k-boot`, `tpt-k-ipc`)
+- [ ] **M6 (Phase 7):** bootable QEMU-ready image artifact in CI, with networking (layers: `tpt-k-toolchain`, `tpt-k-userland`, `tpt-k-drivers`)
+- [ ] **M7 (Phase 8):** USB input and dynamically generated micro-drivers under review (layers: `tpt-k-hal`, `tpt-k-drivers`)
 
 ---
 
@@ -140,6 +138,6 @@ those repo todos are done.
 
 - [ ] Architecture docs and per-repo READMEs
 - [ ] Developer guide: build, run in QEMU, add a driver
-- [ ] Versioning and release process across the 8 repos
+- [ ] Versioning and release process for the tpt-kernel repo
 - [ ] Final license audit across all repos (CI-green with `tpt-cargo-vitals`)
-- [ ] Publish repos / first tagged release
+- [ ] Publish tpt-kernel / first tagged release

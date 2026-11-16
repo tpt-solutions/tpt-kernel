@@ -11,33 +11,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: tpt-kernel
-
-      - uses: actions/checkout@v4
-        with:
-          repository: tpt-solutions/tpt-k-kernel
-          path: tpt-k-kernel
-
-      - uses: actions/checkout@v4
-        with:
-          repository: tpt-solutions/tpt-k-boot
-          path: tpt-k-boot
 
       - name: Install QEMU and OVMF
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
 
-      # Each repo pins its toolchain in rust-toolchain.toml; `rustup show`
-      # installs it, including the bare-metal and UEFI targets.
-      - name: Install pinned toolchains
-        run: |
-          (cd tpt-k-kernel && rustup show)
-          (cd tpt-k-boot && rustup show)
+      # rust-toolchain.toml pins the toolchain and both bare-metal and UEFI targets;
+      # `rustup show` installs them.
+      - name: Install pinned toolchain
+        run: rustup show
 
       - name: Boot the kernel in QEMU
         env:
-          KERNEL_REPO: ${{ github.workspace }}/tpt-k-kernel
-          BOOT_REPO: ${{ github.workspace }}/tpt-k-boot
           OVMF_CODE: /usr/share/OVMF/OVMF_CODE_4M.fd
           OVMF_VARS: /usr/share/OVMF/OVMF_VARS_4M.fd
-        run: bash tpt-kernel/scripts/qemu-smoke.sh
+        run: bash scripts/qemu-smoke.sh

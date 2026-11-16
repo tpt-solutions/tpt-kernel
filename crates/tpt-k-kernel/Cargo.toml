@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-kernel"
+version = "0.0.0"
+description = "tpt-k kernel main binary: early boot entry, stack setup, panic handler."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+tpt-k-kernel-mem = { path = "../tpt-k-kernel-mem" }
+tpt-k-kernel-arch-x86_64 = { path = "../tpt-k-kernel-arch-x86_64" }
+tpt-k-kernel-sched = { path = "../tpt-k-kernel-sched" }
+tpt-k-kernel-ipc = { path = "../tpt-k-kernel-ipc" }
+
+[[bin]]
+name = "tpt-k-kernel"
+path = "src/main.rs"
+test = false
+doc = false

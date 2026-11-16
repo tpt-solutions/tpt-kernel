@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-hal-acpi"
+version = "0.0.0"
+description = "tpt-k HAL ACPI parser: MADT, MCFG, DSDT/SSDT (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

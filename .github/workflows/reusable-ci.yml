@@ -1,36 +1,36 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 #
-# Shared CI for every tpt-k repo. Each repo's ci.yml calls this workflow and
-# passes its own targets and checks. The caller's checkout is what gets built.
+# Shared check job for one build group of the tpt-kernel workspace. ci.yml
+# calls it once per group, each with its own target and package set.
 name: Reusable CI
 
 on:
   workflow_call:
     inputs:
-      clippy_args:
-        description: Arguments appended to `cargo clippy --workspace`
+      target:
+        description: Cargo target triple for fmt-free steps; empty for the host
         type: string
-        default: "--target x86_64-unknown-none"
-      build_args:
-        description: Arguments appended to `cargo build --workspace`
+        default: ""
+      packages:
+        description: Cargo package selection, e.g. "-p crate-a -p crate-b"
         type: string
-        default: "--target x86_64-unknown-none"
+        required: true
       run_tests:
-        description: Run `cargo test --workspace`
+        description: Run `cargo test` with test_packages on the host
         type: boolean
         default: false
-      test_args:
-        description: Arguments for `cargo test`, used instead of --workspace when set
+      test_packages:
+        description: Package selection for `cargo test` (host target)
         type: string
         default: ""
       tcb_checks:
-        description: No build.rs and no -sys (C binding) dependencies
+        description: No build.rs and no -sys dependencies in the workspace
         type: boolean
         default: false
-      nostd_roots:
-        description: Every crate root under crates/ must declare #![no_std]
-        type: boolean
-        default: false
+      nostd_crates:
+        description: Directory names under crates/ whose crate roots must declare #![no_std]
+        type: string
+        default: ""
 
 env:
   CARGO_TERM_COLOR: always
@@ -49,53 +49,50 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --workspace ${{ inputs.clippy_args }} -- -D warnings
+        env:
+          TARGET: ${{ inputs.target }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          target_arg=""; [ -n "$TARGET" ] && target_arg="--target $TARGET"
+          cargo clippy $PACKAGES $target_arg -- -D warnings
 
       - name: Build
-        run: cargo build --workspace ${{ inputs.build_args }}
+        env:
+          TARGET: ${{ inputs.target }}
+          PACKAGES: ${{ inputs.packages }}
+        run: |
+          target_arg=""; [ -n "$TARGET" ] && target_arg="--target $TARGET"
+          cargo build $PACKAGES $target_arg
 
       - name: Test
-        if: inputs.run_tests || inputs.test_args != ''
-        run: cargo test ${{ inputs.test_args != '' && inputs.test_args || '--workspace' }}
+        if: inputs.run_tests
+        env:
+          TEST_PACKAGES: ${{ inputs.test_packages }}
+        run: cargo test $TEST_PACKAGES
 
       - name: "TCB rules: no build scripts or -sys dependencies"
         if: inputs.tcb_checks
         run: |
-          if find . -path ./target -prune -o -name build.rs -print | grep -q .; then
-            echo "build.rs is not allowed in kernel-side crates"; exit 1
+          if find crates -name build.rs -print | grep -q .; then
+            echo "build.rs is not allowed in TCB crates"; exit 1
           fi
-          if grep -rEn '^[A-Za-z0-9_-]+-sys[[:space:]]*=' --include=Cargo.toml . ; then
-            echo "-sys (C binding) dependency is not allowed in kernel-side crates"; exit 1
+          if grep -rEn '^[A-Za-z0-9_-]+-sys[[:space:]]*=' --include=Cargo.toml crates ; then
+            echo "-sys (C binding) dependency is not allowed in TCB crates"; exit 1
           fi
           echo "no build scripts or -sys dependencies"
 
-      - name: no_std declared in every crate root
-        if: inputs.nostd_roots
+      - name: no_std declared in each TCB crate root
+        if: inputs.nostd_crates != ''
+        env:
+          NOSTD_CRATES: ${{ inputs.nostd_crates }}
         run: |
           status=0
-          for f in $(find crates -path '*/src/lib.rs' -o -path '*/src/main.rs'); do
-            if ! grep -q '^#!\[no_std\]' "$f"; then
-              echo "missing #![no_std]: $f"; status=1
+          for name in $NOSTD_CRATES; do
+            root="crates/$name/src/lib.rs"
+            [ -f "$root" ] || root="crates/$name/src/main.rs"
+            if ! grep -q '^#!\[no_std\]' "$root"; then
+              echo "missing #![no_std]: $root"; status=1
             fi
           done
-          [ "$status" -eq 0 ] && echo "all crate roots are #![no_std]"
+          [ "$status" -eq 0 ] && echo "all TCB crate roots are #![no_std]"
           exit $status
-
-  license:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # Gate per LICENSE-POLICY.md: fails on any non-allowed license or known CVE.
-      # Apache-2.0 is omitted on purpose: "MIT OR Apache-2.0" still passes via MIT.
-      - name: Install tpt-cargo-vitals
-        run: cargo install --git https://github.com/tpt-solutions/tpt-cargo-vitals --locked
-
-      - name: Refresh advisory cache
-        run: tpt-cargo-vitals update
-
-      - name: License and CVE gate
-        run: >-
-          tpt-cargo-vitals check --path .
-          --enforce-license "MIT,Unicode-3.0,Unicode-DFS-2016,BSD-2-Clause,BSD-3-Clause,ISC,Zlib,Unlicense,CC0-1.0"
-          --ci-mode

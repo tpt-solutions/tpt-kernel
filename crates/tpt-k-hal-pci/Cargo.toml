@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-hal-pci"
+version = "0.0.0"
+description = "tpt-k HAL PCIe: config space enumeration and BAR parsing (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]

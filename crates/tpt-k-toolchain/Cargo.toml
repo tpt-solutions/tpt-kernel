@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-toolchain"
+version = "0.0.0"
+description = "tpt-k build CLI: resolves deps, cross-compiles workspaces, links binaries (scaffold)."
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+
+[[bin]]
+name = "tpt-k-build"
+path = "src/main.rs"

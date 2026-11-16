@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# CI for the tpt-kernel workspace. Each job is one build group: the groups
+# differ by target and by what is allowed in them.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Bare-metal libraries, which must be no_std (TCB). The kernel binary is
+  # linked by the kernel-image job, not here.
+  tcb-nostd:
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      target: x86_64-unknown-none
+      packages: >-
+        -p tpt-k-kernel-mem -p tpt-k-kernel-sched -p tpt-k-kernel-ipc
+        -p tpt-k-kernel-arch-x86_64 -p tpt-k-kernel-arch-aarch64
+        -p tpt-k-hal -p tpt-k-hal-acpi -p tpt-k-hal-fdt -p tpt-k-hal-pci -p tpt-k-hal-usb
+        -p tpt-k-ipc-cap -p tpt-k-ipc-serde
+      tcb_checks: true
+      nostd_crates: >-
+        tpt-k-kernel-mem tpt-k-kernel-sched tpt-k-kernel-ipc
+        tpt-k-kernel-arch-x86_64 tpt-k-kernel-arch-aarch64
+        tpt-k-hal tpt-k-hal-acpi tpt-k-hal-fdt tpt-k-hal-pci tpt-k-hal-usb
+        tpt-k-ipc-cap tpt-k-ipc-serde
+
+  # Kernel image: linked with its linker script, see scripts/build-kernel.sh.
+  kernel-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show pinned toolchain
+        run: rustup show
+      - name: Build kernel image
+        run: bash scripts/build-kernel.sh
+
+  # UEFI loader. Its library tests run on the host.
+  uefi-loader:
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      target: x86_64-unknown-uefi
+      packages: -p tpt-k-boot -p tpt-k-boot-efi -p tpt-k-boot-fs
+      run_tests: true
+      test_packages: -p tpt-k-boot-fs
+
+  # User-space services and tooling: std, host target.
+  userspace:
+    uses: ./.github/workflows/reusable-ci.yml
+    with:
+      packages: >-
+        -p tpt-k-root -p tpt-k-root-caps -p tpt-k-root-spawn
+        -p tpt-k-ipc -p tpt-k-drivers -p tpt-k-drivers-nvme -p tpt-k-drivers-synth
+        -p tpt-k-drivers-usb-hid -p tpt-k-drivers-virtio
+        -p tpt-k-userland -p tpt-k-userland-shell -p tpt-k-userland-net
+        -p tpt-k-userland-libc -p tpt-k-userland-fs-bridge
+        -p tpt-k-toolchain -p tpt-k-toolchain-iso
+      run_tests: true
+      test_packages: >-
+        -p tpt-k-hal -p tpt-k-hal-acpi -p tpt-k-hal-fdt -p tpt-k-hal-pci -p tpt-k-hal-usb
+        -p tpt-k-drivers -p tpt-k-userland -p tpt-k-toolchain -p tpt-k-ipc-serde
+
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Gate per LICENSE-POLICY.md: fails on any non-allowed license or known CVE.
+      # Apache-2.0 is omitted on purpose: "MIT OR Apache-2.0" still passes via MIT.
+      - name: Install tpt-cargo-vitals
+        run: cargo install --git https://github.com/tpt-solutions/tpt-cargo-vitals --locked
+
+      - name: Refresh advisory cache
+        run: tpt-cargo-vitals update
+
+      - name: License and CVE gate
+        run: >-
+          tpt-cargo-vitals check --path .
+          --enforce-license "MIT,Unicode-3.0,Unicode-DFS-2016,BSD-2-Clause,BSD-3-Clause,ISC,Zlib,Unlicense,CC0-1.0"
+          --ci-mode
