@@ -40,6 +40,7 @@ documented invariant.
 ### Verification
 - [x] Tests: IPC round-trip and context switching (2026-11-16: the QEMU smoke test runs a request/reply and a capability refusal, and checks the worker sequence; capability revocation is host-tested in `tpt-k-kernel-ipc`, the root-server tests come with `tpt-k-root`)
 - [ ] Milestone M2 (kernel side)
+- [x] Bounded exhaustive checks of the capability table and of endpoints (2026-11-18: `CAP-1` to `CAP-8` and `IPC-1` to `IPC-6` in `tpt-k-kernel-ipc`, listed in `docs/assurance/graph.json` and described in `docs/assurance/invariants.md`). They run in `cargo test`, in `scripts/check.sh`, and in the CI `tcb-nostd` group (host tests, added 2026-11-18).
 
 ## Phase 3 — Hardware & interrupts
 

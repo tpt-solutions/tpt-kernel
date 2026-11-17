@@ -74,6 +74,43 @@ that they are `#![no_std]`. Run that locally with:
 cargo clippy -p <crate> --target x86_64-unknown-none -- -D warnings
 ```
 
+The same script runs the assurance gate (see below). Its report is written to
+`docs/assurance/report.md`, which is generated, so do not edit it by hand.
+
+## Assurance gate
+
+[docs/assurance/graph.json](assurance/graph.json) links each claim about the
+capability and IPC code to the tests, exhaustive checks and fuzz targets that
+back it. The invariants themselves are in
+[docs/assurance/invariants.md](assurance/invariants.md).
+
+```sh
+cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- assure --report docs/assurance/report.md
+```
+
+The gate checks that every named function exists in its file, and it sorts
+each claim as bounded-proven, tested, waived or unproven. It fails if a critical
+claim is not bounded-proven and has no waiver. A waiver must say why the claim
+stays open. `cargo test` runs the same check on the real graph, so CI enforces
+it too.
+
+To add a claim, add an entry to `graph.json` that names real evidence. Use
+`exhaustive` only for a check that enumerates a finite model, and `test` for
+sampled checks. A sampled check does not make a claim proven.
+
+## Reviewing generated or refactored code
+
+For a large generated or refactored change, review the semantics rather than
+the text. The repo is set up to use `tpt-semadiff` as the git difftool:
+
+```sh
+git difftool --tool=semadiff <base>..<head>
+```
+
+The `difftool.semadiff.cmd` setting is already in the git config of this
+clone. The `tpt-semadiff` binary has to be on `PATH`. It was not on PATH when
+this section was written, so the workflow has not been run on this machine.
+
 ## Building the kernel and loader
 
 ```sh

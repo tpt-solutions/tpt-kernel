@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: crates are empty placeholders that build. Workspace members are under `crates/`.
+What is built, and what is still open, is in [the layer checklist](../todos/ipc.md). Each crate's README has its own `Status` section. Crates are under `crates/`.
 
 ## License
 

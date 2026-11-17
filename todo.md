@@ -121,17 +121,23 @@ those repo todos are done.
 ## Phase 5 — Formal Assurance & Automation (ongoing, starts alongside Phase 2)
 
 - [ ] Define core IPC + capability invariants in `tpt-concord` (e.g., "capability check cannot be bypassed")
-- [ ] Property tests linked to each invariant
-  - 2026-11-18: deterministic property-style tests cover attenuation, key binding, token integrity, the root table's tree invariant, and the frame codec. They are not proptest, because its dependencies fail the license gate. A formal model is still open.
+  - 2026-11-18: the invariants are stated in `docs/assurance/invariants.md` (CAP-1 to CAP-8, IPC-1 to IPC-6, with the token and service claims) and recorded in `docs/assurance/graph.json`. Not yet in `tpt-concord`: its CLI is not built on this machine, and nothing was written to the sibling repo.
+- [x] Property tests linked to each invariant
+  - 2026-11-18: every claim in `docs/assurance/graph.json` names its evidence, which the gate checks exists. CAP-* and IPC-* are backed by bounded exhaustive checks (`bounded_exhaustive_capability_invariants`, `bounded_exhaustive_endpoint_invariants`, `derive_accepts_exactly_grantable_subsets`), each with a minimum-step guard. TOK-2 and SRV-1 are bounded-exhaustive too (attenuation over all rights-mask pairs; the service gate over all masks, opcodes and keys, added 2026-11-18). TOK-1 and SER-1 have sampled tests only and are waived in the graph. A formal model is still open.
 - [ ] Fuzzing campaigns: syscall interface, IPC serde, ACPI/PCI/FDT/USB parsers
-  - 2026-11-17: deterministic mutation tests cover the ACPI, PCI, FDT, USB and IPC serde parsers and the ELF planner, with no panics found. Coverage-guided fuzzing and the syscall interface are still open.
+  - 2026-11-18: no coverage-guided campaign has been run, and no fuzz harness is written. `cargo-fuzz` needs a nightly toolchain and a sanitizer runtime, which this Windows machine lacks. Installing them in the WSL Ubuntu distribution was denied by the sandbox policy, so nothing was installed or run. Sampled mutation tests exist for ACPI, PCI, FDT, USB, IPC serde and the ELF planner (2026-11-17), with no panics found.
 - [ ] SMT/model-checking artifacts for capability + IPC invariants
+  - 2026-11-18: bounded exhaustive checks over an executable model of the capability table and the endpoint are in `tpt-k-kernel-ipc` (CAP-* and IPC-*, see `docs/assurance/invariants.md` for the bounds). They are enumeration, not SMT: no solver or machine-checked proof is wired in. A mutation run confirmed the capability check fails when cross-table revocation is broken.
 - [ ] Build Assurance Graph; link proofs/tests/fuzzing to kernel specs
-- [ ] CI gate fails when graph shows unproven critical claims
-- [ ] Wire `tpt-cargo-vitals` into daily local workflow (pre-commit/pre-push)
-  - 2026-11-18: `scripts/check.sh` runs fmt, clippy, tests and the license gate, and `.githooks/pre-push` runs it. Enable with `git config core.hooksPath .githooks`. There is no pre-commit hook yet.
+  - 2026-11-18: built: `docs/assurance/graph.json` has 17 claims and links each to its evidence. Still open: linking the claims to numbered sections of `spec.txt`, which has no numbered invariants yet, and the fuzz and proof evidence kinds, which have no items.
+- [x] CI gate fails when graph shows unproven critical claims
+  - 2026-11-18: `tpt-k-build assure` (in `crates/tpt-k-toolchain/src/assurance.rs`) fails on a missing evidence item, or on a critical claim that is not bounded-proven and has no waiver. It runs in `scripts/check.sh`, and in CI through the toolchain's `cargo test` (the repo-graph test). Gap closed (2026-11-18): the `tcb-nostd` group now runs host tests for its TCB crates, so the `tpt-k-kernel-ipc` exhaustive checks run in CI. The `userspace` group was also missing 13 crates that have tests (including `tpt-k-ipc`, where SRV-1 lives); its `test_packages` now covers every crate with a `#[test]`. The CI runs themselves have not been observed yet.
+- [x] Wire `tpt-cargo-vitals` into daily local workflow (pre-commit/pre-push)
+  - 2026-11-18: `scripts/check.sh` runs fmt, clippy, tests, the assurance gate and the license and CVE gate, and `.githooks/pre-push` runs it. Enable with `git config core.hooksPath .githooks`. There is no pre-commit hook, by choice: the license gate takes about 8 s, which is too slow for every commit.
 - [ ] Wire `tpt-semadiff` into review workflow for generated/refactored code
-- [ ] Report: what is proven vs unproven (published per release)
+  - 2026-11-18: the review workflow is documented in `docs/developer-guide.md`, and the git difftool setting is in place. Not exercised: `tpt-semadiff` is not on PATH on this machine.
+- [x] Report: what is proven vs unproven (published per release)
+  - 2026-11-18: `tpt-k-build assure` writes `docs/assurance/report.md` from the graph (13 bounded-proven, 4 tested, 0 unproven on this date, with the waivers listed). Publishing it with each release is part of `docs/release.md`.
 
 ---
 
@@ -150,9 +156,13 @@ those repo todos are done.
 
 ## Phase 10 — Documentation & Release
 
-- [ ] Architecture docs and per-repo READMEs
-- [ ] Developer guide: build, run in QEMU, add a driver
-  - 2026-11-18: `docs/developer-guide.md` covers checks, building, the QEMU smoke test, writing a crate, capabilities and IPC, and the driver pieces. It says what is not built yet.
-- [ ] Versioning and release process for the tpt-kernel repo
+- [x] Architecture docs and per-repo READMEs
+  - 2026-11-18: `docs/architecture.md` is written. The eight layer docs in `docs/layers/` no longer say the crates are placeholders, and they point to the layer checklists. All 32 crates have a README and a CHANGELOG. The README `Status` sections were not re-checked against the code one by one.
+- [x] Developer guide: build, run in QEMU, add a driver
+  - 2026-11-18: `docs/developer-guide.md` covers checks, building, the QEMU smoke test, writing a crate, capabilities and IPC, and the driver pieces. It says what is not built yet. It now also covers the assurance gate and the semadiff review workflow.
+- [x] Versioning and release process for the tpt-kernel repo
+  - 2026-11-18: `docs/release.md` and the root `CHANGELOG.md` are written. Open decisions, recorded in `docs/release.md`: the first version number, whether versions live in `[workspace.package]` or in each crate (the crates are at `0.0.0`), and how a sibling repo that fails the license gate is handled before a tag.
 - [ ] Final license audit across all repos (CI-green with `tpt-cargo-vitals`)
+  - 2026-11-18, read-only run of `tpt-cargo-vitals check --enforce-license` (CI allowlist). This repo passes: 28 of 28 dependencies compliant, 0 vulnerabilities. The sibling repos do not pass: tpt-primitives (1 Apache-only, `borsh-derive`); tpt-simd (3, incl. `ciborium`); tpt-concord (3, incl. `MIT-0` and `ryu`); tpt-crypto (5, incl. `ciborium`, `borsh-derive`); tpt-crypto-rustls (1, `ring`, plus 7 advisories); tpt-mcpbox (48 non-compliant, plus 7 advisories; `DEP-AUDIT.md` says the wasmtime advisories were fixed and the rest are accepted in `deny.toml`, which this gate does not read). tpt-fabric and tpt-filesystem pass. Policy decisions are still open: `MIT-0`, `BSL-1.0` (for `ryu`), `CDLA-Permissive-2.0`, and the Apache-only replacements.
 - [ ] Publish tpt-kernel / first tagged release
+  - Not done. The steps are in `docs/release.md`. The first version number is an open decision, and the release needs an explicit go-ahead.

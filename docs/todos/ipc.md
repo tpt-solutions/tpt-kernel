@@ -28,3 +28,4 @@ Rules: `#![no_std]`, 100% Rust, no C/C++ bindings.
 
 - [ ] Performance benchmarks: IPC latency
 - [ ] Fuzz the IPC serde path (feeds Phase 5 in the master plan) (partly, 2026-11-17: deterministic mutation tests on the frame decoder; not coverage-guided fuzzing)
+  - 2026-11-18: the endpoint and capability-token invariants that IPC relies on are checked in `tpt-k-kernel-ipc` and `tpt-k-ipc-cap` (see `docs/assurance/invariants.md`). Token and service claims are waived as sampled-only. No coverage-guided campaign has been run.
