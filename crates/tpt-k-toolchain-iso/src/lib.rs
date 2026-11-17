@@ -9,5 +9,6 @@
 #![forbid(unsafe_code)]
 
 pub mod fat;
+pub mod gpt;
 
 pub use fat::{build, sectors_per_cluster_for, ImageError};

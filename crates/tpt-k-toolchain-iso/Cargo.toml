@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-toolchain-iso"
 version = "0.0.0"
-description = "tpt-k boot image assembly: a FAT32 writer for the boot partition."
+description = "tpt-k boot image assembly: a FAT32 boot-partition writer and a GPT disk wrapper."
 readme = "README.md"
 keywords = ["iso", "uefi", "disk-image", "tpt-k", "bootable"]
 categories = ["development-tools::build-utils", "os"]
