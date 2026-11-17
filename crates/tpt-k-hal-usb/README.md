@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: Device, configuration, interface and endpoint descriptor parser, with HID boot keyboard and mouse recognition. Descriptors it does not know are returned unparsed for the class driver.
 
 ## License
 

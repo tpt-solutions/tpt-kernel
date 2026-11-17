@@ -13,21 +13,21 @@ fuzz targets.
 
 ## Phase 3 — HAL
 
-- [ ] `tpt-k-hal`: core hardware data structures
-- [ ] `tpt-k-hal-acpi`: MADT, MCFG, DSDT/SSDT parsing
-- [ ] `tpt-k-hal-pci`: PCIe config space enumeration + BAR parsing
-- [ ] Unit and fuzz tests for each parser against real-world table dumps
+- [x] `tpt-k-hal`: core hardware data structures (2026-11-17: MMIO regions, port ranges, IRQ lines and the conflict rule the root server checks; host-tested)
+- [ ] `tpt-k-hal-acpi`: MADT, MCFG, DSDT/SSDT parsing (partly, 2026-11-17: RSDP, RSDT/XSDT, MADT and MCFG are parsed and host-tested; DSDT/SSDT AML is open)
+- [x] `tpt-k-hal-pci`: PCIe config space enumeration + BAR parsing (2026-11-17: enumeration over a caller-supplied `ConfigAccess`; BAR decoding and sizing with decoding switched off; host-tested. Bridges are not followed)
+- [ ] Unit and fuzz tests for each parser against real-world table dumps (partly, 2026-11-17: synthetic-table unit tests for every parser; fuzz targets and real dumps are open)
 
 ### Verification
 - [ ] Milestone M3 (HAL side)
 
 ## Phase 6 — AArch64
 
-- [ ] `tpt-k-hal-fdt`: Flattened Device Tree parser
+- [x] `tpt-k-hal-fdt`: Flattened Device Tree parser (2026-11-17: header checks, structure events, path lookup, root cells, memory regions and `reg` decoding; host-tested)
 
 ## Phase 8 — Driver expansion
 
-- [ ] `tpt-k-hal-usb`: USB descriptor parser
+- [x] `tpt-k-hal-usb`: USB descriptor parser (2026-11-17: device, configuration, interface and endpoint descriptors, HID boot keyboard and mouse recognition; host-tested)
 
 ## Phase 9 — Bare metal
 

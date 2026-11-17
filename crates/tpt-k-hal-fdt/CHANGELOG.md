@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Flattened device tree parser: header checks, structure events, lookup of a property by path, root cell counts, memory regions and `reg` decoding. Read-only and allocation-free.

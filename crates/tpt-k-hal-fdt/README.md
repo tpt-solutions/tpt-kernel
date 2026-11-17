@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: Flattened device tree parser: header checks, structure events, lookup of a property by path, root cell counts, memory regions and `reg` decoding. Read-only and allocation-free.
 
 ## License
 

@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Configuration-space enumeration over a caller-supplied `ConfigAccess`, and BAR decoding and sizing (32-bit and 64-bit memory, I/O). Decoding is switched off while BARs are sized. Bridges are not followed, and the caller supplies the ECAM access.

@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-hal"
 version = "0.0.0"
-description = "tpt-k HAL core: common hardware data structures (scaffold)."
+description = "tpt-k HAL core: common hardware data structures."
 readme = "README.md"
 keywords = ["hal", "hardware", "tpt-k", "firmware", "discovery"]
 categories = ["os", "hardware-support"]

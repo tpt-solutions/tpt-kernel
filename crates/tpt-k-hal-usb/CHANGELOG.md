@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Device, configuration, interface and endpoint descriptor parser, with HID boot keyboard and mouse recognition. Descriptors it does not know are returned unparsed for the class driver.

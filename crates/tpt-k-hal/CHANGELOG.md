@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Core hardware resources: MMIO regions, I/O port ranges and interrupt lines, with the collision rule the root server checks before it grants them.

@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-hal-pci"
 version = "0.0.0"
-description = "tpt-k HAL PCIe: config space enumeration and BAR parsing (scaffold)."
+description = "tpt-k HAL PCIe: config space enumeration and BAR parsing."
 readme = "README.md"
 keywords = ["pci", "pcie", "tpt-k", "bar", "hardware"]
 categories = ["os", "hardware-support"]

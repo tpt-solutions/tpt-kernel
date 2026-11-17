@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: Configuration-space enumeration over a caller-supplied `ConfigAccess`, and BAR decoding and sizing (32-bit and 64-bit memory, I/O). Decoding is switched off while BARs are sized. Bridges are not followed, and the caller supplies the ECAM access.
 
 ## License
 

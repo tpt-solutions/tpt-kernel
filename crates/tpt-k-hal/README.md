@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: Core hardware resources: MMIO regions, I/O port ranges and interrupt lines, with the collision rule the root server checks before it grants them.
 
 ## License
 
