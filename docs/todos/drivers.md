@@ -16,7 +16,7 @@ Rules: drivers reach hardware only through capabilities granted by `tpt-k-root`.
 - [ ] Capability-checked WASM host functions: `mmio_read/write`, `dma_map`, `irq_wait`
 - [ ] `tpt-k-drivers-virtio`: VirtIO console (or keyboard) driver (partly, 2026-11-17: split-virtqueue layout and the virtio-blk request layer are encoded and host-tested; no device I/O yet)
 - [ ] Driver receives interrupts via IPC notification
-- [ ] `tpt-k-drivers`: driver manager that monitors health and restarts crashed drivers
+- [ ] `tpt-k-drivers`: driver manager that monitors health and restarts crashed drivers (partly, 2026-11-17: heartbeats, exponential backoff, kill on a missed heartbeat, give-up and stop requests, host-tested as a state machine; no process control yet)
 
 ### Verification
 - [ ] Test: misbehaving driver traps or crashes without a kernel panic

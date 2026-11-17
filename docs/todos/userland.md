@@ -23,7 +23,7 @@ dependencies (dev-dependencies excepted).
 
 - [ ] `tpt-k-userland-shell`: command parser, job control (partly, 2026-11-17: quoting, pipelines, `&&`/`||`/`;`, background and redirections; a job table with fg/bg and reaping. No process spawning yet)
 - [ ] `tpt-k-userland`: meta-crate and interactive shell binary
-- [ ] `tpt-k-userland-libc`: minimal POSIX shim over `tpt-k-ipc`
+- [ ] `tpt-k-userland-libc`: minimal POSIX shim over `tpt-k-ipc` (partly, 2026-11-17: memory and string functions, strtol-style parsing, integer formatting, errno values and path normalisation, host-tested; no C ABI yet)
 - [ ] `tpt-k-userland-net`: user-space TCP/IP stack daemon (partly, 2026-11-17: Ethernet, ARP, IPv4, ICMP, UDP and TCP-header codecs, the Internet checksum, and an ARP cache; no TCP state machine, no daemon)
 - [ ] Zero-copy packet path: NIC driver → network stack → applications
 - [ ] Network integration tests in QEMU (ping, TCP echo)
