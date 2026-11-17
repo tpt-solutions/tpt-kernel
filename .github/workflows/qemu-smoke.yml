@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Fetch sibling tpt-primitives (path dependency)
+        run: git clone --depth 1 https://github.com/tpt-solutions/tpt-primitives.git "$GITHUB_WORKSPACE/../tpt-primitives"
+
       - name: Install QEMU and OVMF
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 ovmf
 

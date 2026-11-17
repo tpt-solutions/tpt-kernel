@@ -21,6 +21,14 @@ jobs:
         -p tpt-k-kernel-arch-x86_64 -p tpt-k-kernel-arch-aarch64
         -p tpt-k-hal -p tpt-k-hal-acpi -p tpt-k-hal-fdt -p tpt-k-hal-pci -p tpt-k-hal-usb
         -p tpt-k-ipc-cap -p tpt-k-ipc-serde
+      # Host tests for the TCB crates. The bare-metal target has no test
+      # harness, so the test step runs on the host. Without this, the
+      # kernel-ipc invariant checks never run in CI.
+      run_tests: true
+      test_packages: >-
+        -p tpt-k-kernel-mem -p tpt-k-kernel-sched -p tpt-k-kernel-ipc
+        -p tpt-k-kernel-arch-x86_64 -p tpt-k-kernel-arch-aarch64
+        -p tpt-k-ipc-cap -p tpt-k-ipc-serde
       tcb_checks: true
       nostd_crates: >-
         tpt-k-kernel-mem tpt-k-kernel-sched tpt-k-kernel-ipc
@@ -33,6 +41,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch sibling tpt-primitives
+        run: git clone --depth 1 https://github.com/tpt-solutions/tpt-primitives.git "$GITHUB_WORKSPACE/../tpt-primitives"
       - name: Show pinned toolchain
         run: rustup show
       - name: Build kernel image
@@ -62,11 +72,19 @@ jobs:
       test_packages: >-
         -p tpt-k-hal -p tpt-k-hal-acpi -p tpt-k-hal-fdt -p tpt-k-hal-pci -p tpt-k-hal-usb
         -p tpt-k-drivers -p tpt-k-userland -p tpt-k-toolchain -p tpt-k-ipc-serde
+        -p tpt-k-ipc
+        -p tpt-k-root -p tpt-k-root-caps -p tpt-k-root-spawn
+        -p tpt-k-drivers-nvme -p tpt-k-drivers-synth -p tpt-k-drivers-usb-hid
+        -p tpt-k-drivers-virtio -p tpt-k-toolchain-iso
+        -p tpt-k-userland-fs-bridge -p tpt-k-userland-libc -p tpt-k-userland-net
+        -p tpt-k-userland-shell
 
   license:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch sibling tpt-primitives (path dependency)
+        run: git clone --depth 1 https://github.com/tpt-solutions/tpt-primitives.git "$GITHUB_WORKSPACE/../tpt-primitives"
 
       # Gate per LICENSE-POLICY.md: fails on any non-allowed license or known CVE.
       # Apache-2.0 is omitted on purpose: "MIT OR Apache-2.0" still passes via MIT.

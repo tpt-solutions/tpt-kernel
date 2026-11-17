@@ -41,6 +41,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # tpt-k-ipc-cap uses tpt-primitives by path (../../../tpt-primitives), so
+      # the sibling checkout must exist before cargo reads any manifest.
+      - name: Fetch sibling tpt-primitives (path dependency)
+        run: git clone --depth 1 https://github.com/tpt-solutions/tpt-primitives.git "$GITHUB_WORKSPACE/../tpt-primitives"
+
       # Installs the toolchain, components, and targets pinned in rust-toolchain.toml.
       - name: Show pinned toolchain
         run: rustup show
