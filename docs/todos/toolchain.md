@@ -20,5 +20,14 @@ Scope: the build CLI `tpt-k-build`, and the assembly of bootable images.
 
 ## Phase 11b — adoption tooling (2026-11-18)
 
-- [x] `tpt-k-build doctor`: checks Rust 1.95.0 and targets, QEMU, OVMF, sibling repos and the git hooks path, and prints the fix for each problem (Windows and Linux). Run it from the repo root
-- [ ] `tpt-k-build run`, `image --run`, `xtask`, `.devcontainer/` and the CI image job: not started
+- [x] `tpt-k-build doctor`: checks Rust 1.95.0 and targets, QEMU, OVMF, sibling repos and the git hooks path, and prints the fix for each problem (Windows and Linux)
+- [x] `tpt-k-build run` and `image --run`: build, stage the ESP, boot QEMU with serial on stdio (tested here: PASS)
+- [x] `cargo xtask` (`crates/tpt-k-toolchain-xtask`): check, build-kernel, qemu-smoke, fetch-deps in Rust; scripts/ are thin wrappers
+- [x] `.devcontainer/`: written, not built here (no container runtime)
+- [x] CI `image.yml`: builds the boot image and the assurance dashboard on push to master, uploads both. Not run on GitHub yet
+
+## Phase 11c — innovative features (2026-11-18)
+
+- [x] Capability inspector: the kernel dumps `cap:` lines at boot; `tpt-k-build caps --serial` renders text or DOT
+- [ ] Deterministic replay: `tpt-k-build replay` is built on the instruction counter, but the transcript still varies, because the APIC timer period is calibrated against the PIT each boot. Needs a fixed period under replay (a kernel design decision)
+- [x] Assurance dashboard: `tpt-k-build assure --html <file>`. Open: linking claims to spec.txt sections

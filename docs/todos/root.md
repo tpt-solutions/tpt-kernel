@@ -40,3 +40,8 @@ Rules: `#![no_std]` where it is in the TCB, 100% Rust, no C/C++ bindings.
 ## Phase 11a — stub cleanup (2026-11-18)
 
 - [x] `fuzz_tests.rs` renamed to `mutation_tests.rs` in `tpt-k-root-spawn`
+
+## Phase 11c — policy as a manifest (2026-11-18)
+
+- [x] `tpt-k-root-manifest`: compiles a TOML app manifest into grants, refusing any grant above an object's ceiling. Linted by `tpt-k-build lint-manifest`. Property test: claim MAN-1
+- [ ] The root server does not read manifests yet, so nothing is granted from them

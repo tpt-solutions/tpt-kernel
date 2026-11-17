@@ -11,6 +11,15 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 
 ### Added
 
+- Capability revocation at exit, seL4-style. An exiting thread deletes its handles without revoking the copies other threads hold, and the derivation tree is re-linked (`cap::delete_across`). Memory objects that nothing refers to are then reclaimed, which returns their frames. Revoking the last handle to an object reclaims it too.
+- Capability inspector: the kernel prints the live capability graph at boot (`caps: begin` … `caps: end`), and `tpt-k-build caps` renders it as text or DOT.
+- Policy as a manifest: `tpt-k-root-manifest` compiles a TOML manifest into grants, refusing any grant above an object's ceiling. `tpt-k-build lint-manifest` lints it.
+- Assurance dashboard: `tpt-k-build assure --html <file>` writes one static HTML page.
+- Boot image: `tpt-k-build image --run` and `tpt-k-build run` build the kernel and loader, stage the ESP, and boot it in QEMU with serial on stdio.
+- `cargo xtask` (`crates/tpt-k-toolchain-xtask`): check, build-kernel, qemu-smoke and fetch-deps in Rust. The shell scripts in `scripts/` are thin wrappers.
+- Deterministic replay, as a tool: `tpt-k-build replay --record|--golden` runs QEMU on the instruction counter. It does not yet give a repeatable transcript (see `todo.md`).
+- CI: `.github/workflows/image.yml` builds the boot image and the dashboard on push to master. `.devcontainer/` gives the pinned toolchain, both targets, QEMU and OVMF.
+
 - `tpt-k-build doctor`: checks the Rust toolchain and targets, QEMU, OVMF, the sibling repos and the git hooks path. It prints the fix for each problem, for Windows and Linux.
 - Ring-3 exceptions end only the faulting thread. The kernel prints `user: fault vector N` and goes on. A smoke-test thread checks this.
 - `SYS_MEM_FREE` frees an unmapped memory object, revokes every handle to it in every table, and returns its frames. Mapped objects return `EBUSY`, since there is no unmap yet.
@@ -30,6 +39,9 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
   the developer guide.
 
 ### Changed
+
+- The QEMU smoke test reads the serial transcript from QEMU's stdout pipe, not from a file. The file dropped kernel output on this host. The smoke test also checks the capability dump.
+- The bootstrap thread disables interrupts after the RTC check, so it finishes setting up the demo before any demo thread runs.
 
 - The layer docs in `docs/layers/` no longer call the crates empty placeholders.
   They point to the layer checklists and crate READMEs, which are kept current.

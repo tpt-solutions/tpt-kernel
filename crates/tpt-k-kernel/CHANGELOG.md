@@ -9,6 +9,10 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- The live capability graph is printed at boot, between `caps: begin` and `caps: end`, one `cap:` line per capability.
+- Exiting threads and faulting ring-3 threads delete their handles without revoking (`delete_across`), and memory objects that nothing refers to are reclaimed.
+- Interrupts stay off while the bootstrap thread sets up the demo, and are enabled only when the demo threads start.
+
 - Failed system calls return a negated errno (`EFAULT`, `EINVAL`, `EBADF`, `EACCES`, `ENOMEM`, `ENOSPC`, `EDEADLK`, `EBUSY`, `ENOSYS`) instead of `u64::MAX`. A boot self-test checks it.
 - `SYS_MEM_FREE` (number 16): frees an unmapped memory object after revoking every handle to it, and returns its frames. Object 0 and mapped objects are refused.
 - Ring-3 exceptions go to a user fault handler, which ends the faulting thread. A boot-time user thread reads address 0 to check this.
