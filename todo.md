@@ -79,8 +79,10 @@ Rules that apply to every task:
 - [x] Configure `tpt-semadiff` as default git difftool
 - [x] Confirm `tpt-cargo-vitals` runs locally and in <100ms (2026-11-16: the <100 ms parse+graph budget is met at ~1.5 ms; the ~8 s end-to-end time is seven `cargo metadata` runs, one per platform target, by design. Accepted for CI; a host-only flag is optional future work in tpt-cargo-vitals)
 - [ ] Verify existing TPT deps build `no_std` and are reachable via git/path: `tpt-primitives`, `tpt-simd`, `tpt-fabric`, `tpt-mcpbox`, `tpt-concord`, `tpt-filesystem`
+  - 2026-11-17: `tpt-primitives` builds `no_std` for `x86_64-unknown-none` through `tpt-k-ipc-cap`, and is consumed by path from the sibling repo. Still open: `tpt-simd`, `tpt-fabric`, `tpt-concord`, `tpt-filesystem`, `tpt-mcpbox`.
   - 2026-11-16: `tpt-primitives` now builds `no_std` (`x86_64-unknown-none`); its `ciborium` dependency is gone. Still open: `tpt-simd` (2 crates), `tpt-fabric` (12 std crates), `tpt-concord`, `tpt-filesystem` and `tpt-mcpbox` (std by design, not needed in the TCB).
 - [ ] Audit licenses of TPT deps and their transitive deps (incl. WASM runtime used by `tpt-mcpbox`)
+  - 2026-11-17: the workspace passes the CI license gate (`tpt-cargo-vitals check` with the CI allowlist: 29 dependencies, 0 vulnerabilities). The WASM runtime of `tpt-mcpbox` is not in this tree yet, so the item stays open.
 
 ### CI
 - [x] GitHub Actions workflow per repo: fmt, clippy, build, tests
