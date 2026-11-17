@@ -30,7 +30,8 @@ fn script_runs_builtins_and_exits_with_its_code() {
     let (code, stdout, stderr) =
         run_script("echo hello\nfalse || echo recovered\nexit 5\necho no\n");
     assert_eq!(code, 5);
-    assert_eq!(stdout, "> hello\n> recovered\n> ");
+    // Piped input gets no prompt, so the transcript is only command output.
+    assert_eq!(stdout, "hello\nrecovered\n");
     assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
 }
 
@@ -44,5 +45,5 @@ fn end_of_input_returns_last_status() {
 fn unknown_command_message_goes_to_stderr() {
     let (_, stdout, stderr) = run_script("frobnicate\nexit 0\n");
     assert_eq!(stderr, "tpt-k: frobnicate: not supported yet\n");
-    assert_eq!(stdout, "> > ");
+    assert_eq!(stdout, "");
 }

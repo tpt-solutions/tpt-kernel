@@ -3,9 +3,10 @@
 //! builtins, and keeps the job table.
 //!
 //! Builtins: `jobs`, `fg`, `bg`, `exit`, `true`, `false` and `echo`. Any other
-//! command reports `not supported yet` and exits with status 127, since this
-//! tree cannot start programs yet. Redirections and pipelines are refused with
-//! an error, and `&` records a job that is never run.
+//! command goes to a [`Spawner`]. The binary uses [`NoSpawner`], which reports
+//! `not supported yet` and exits with status 127, since this tree cannot start
+//! programs yet. Redirections and pipelines are refused with an error, and `&`
+//! records a job that is never run.
 //!
 //! Output goes through a [`Sink`], so tests capture it without a terminal.
 
@@ -25,6 +26,28 @@ pub trait Sink {
     fn out(&mut self, text: &str);
     /// Text for standard error.
     fn err(&mut self, text: &str);
+}
+
+/// Runs external programs. The REPL hands every command that is not a builtin
+/// to a spawner. Tests pass a fake, and the binary uses [`NoSpawner`] until
+/// the system can start programs.
+pub trait Spawner {
+    /// Runs `argv` (the program name followed by its arguments) to completion,
+    /// writing its output to `sink`, and returns its exit status.
+    fn spawn(&mut self, argv: &[String], sink: &mut dyn Sink) -> i32;
+}
+
+/// A [`Spawner`] for a tree that cannot start programs yet. It reports the
+/// command as not supported and returns 127.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoSpawner;
+
+impl Spawner for NoSpawner {
+    fn spawn(&mut self, argv: &[String], sink: &mut dyn Sink) -> i32 {
+        let name = argv.first().map_or("", String::as_str);
+        sink.err(&format!("tpt-k: {name}: not supported yet\n"));
+        127
+    }
 }
 
 /// A [`Sink`] that keeps everything in memory. Useful for tests.
@@ -97,8 +120,20 @@ impl Repl {
         self.last
     }
 
-    /// Parses and runs one line. Stops early at `exit`.
+    /// Parses and runs one line, with external commands refused by
+    /// [`NoSpawner`]. Stops early at `exit`.
     pub fn run_line(&mut self, line: &str, sink: &mut dyn Sink) -> ReplOutcome {
+        self.run_line_with(line, sink, &mut NoSpawner)
+    }
+
+    /// Parses and runs one line. Any command that is not a builtin goes to
+    /// `spawner`. Stops early at `exit`.
+    pub fn run_line_with(
+        &mut self,
+        line: &str,
+        sink: &mut dyn Sink,
+        spawner: &mut dyn Spawner,
+    ) -> ReplOutcome {
         let parsed = match parse(line) {
             Ok(p) => p,
             Err(e) => {
@@ -108,7 +143,7 @@ impl Repl {
             }
         };
         for item in &parsed.items {
-            match self.run_item(item, sink) {
+            match self.run_item(item, sink, spawner) {
                 Flow::Status(s) => self.last = s,
                 Flow::Exit(code) => return ReplOutcome::Exit(code),
             }
@@ -116,7 +151,12 @@ impl Repl {
         ReplOutcome::Continue(self.last)
     }
 
-    fn run_item(&mut self, item: &ListItem, sink: &mut dyn Sink) -> Flow {
+    fn run_item(
+        &mut self,
+        item: &ListItem,
+        sink: &mut dyn Sink,
+        spawner: &mut dyn Spawner,
+    ) -> Flow {
         if item.background {
             let text = render_item(item);
             let id = self.jobs.add(&text, true);
@@ -124,7 +164,7 @@ impl Repl {
             return Flow::Status(0);
         }
         let and_or = &item.and_or;
-        let mut status = match self.run_pipeline(&and_or.first, sink) {
+        let mut status = match self.run_pipeline(&and_or.first, sink, spawner) {
             Flow::Status(s) => s,
             exit => return exit,
         };
@@ -134,7 +174,7 @@ impl Repl {
                 Chain::Or => status != 0,
             };
             if run {
-                status = match self.run_pipeline(pipeline, sink) {
+                status = match self.run_pipeline(pipeline, sink, spawner) {
                     Flow::Status(s) => s,
                     exit => return exit,
                 };
@@ -143,7 +183,12 @@ impl Repl {
         Flow::Status(status)
     }
 
-    fn run_pipeline(&mut self, pipeline: &Pipeline, sink: &mut dyn Sink) -> Flow {
+    fn run_pipeline(
+        &mut self,
+        pipeline: &Pipeline,
+        sink: &mut dyn Sink,
+        spawner: &mut dyn Spawner,
+    ) -> Flow {
         if pipeline.commands.len() > 1 {
             sink.err("tpt-k: pipelines are not supported yet\n");
             return Flow::Status(1);
@@ -153,10 +198,15 @@ impl Repl {
             sink.err("tpt-k: redirections are not supported yet\n");
             return Flow::Status(1);
         }
-        self.builtin(command, sink)
+        self.builtin(command, sink, spawner)
     }
 
-    fn builtin(&mut self, command: &Command, sink: &mut dyn Sink) -> Flow {
+    fn builtin(
+        &mut self,
+        command: &Command,
+        sink: &mut dyn Sink,
+        spawner: &mut dyn Spawner,
+    ) -> Flow {
         let Some(name) = command.words.first() else {
             return Flow::Status(0);
         };
@@ -184,10 +234,7 @@ impl Repl {
             "fg" => self.continue_job(args, "fg", true, sink),
             "bg" => self.continue_job(args, "bg", false, sink),
             "exit" => self.exit(args, sink),
-            _ => {
-                sink.err(&format!("tpt-k: {name}: not supported yet\n"));
-                Flow::Status(127)
-            }
+            _ => Flow::Status(spawner.spawn(&command.words, sink)),
         }
     }
 
@@ -288,16 +335,29 @@ fn render_command(command: &Command) -> String {
     parts.join(" ")
 }
 
-/// Runs every line from `input` through a fresh or existing [`Repl`].
-///
-/// When `prompt` is true, `> ` is written before each line read. Stops at
-/// `exit` or end of input. Returns the exit code: the `exit` argument, or the
-/// last command's status at end of input.
+/// Runs every line from `input` through a fresh or existing [`Repl`], with
+/// external commands refused by [`NoSpawner`]. See [`run_reader_with`].
 pub fn run_reader<R: BufRead>(
     repl: &mut Repl,
     input: R,
     sink: &mut dyn Sink,
     prompt: bool,
+) -> std::io::Result<i32> {
+    run_reader_with(repl, input, sink, prompt, &mut NoSpawner)
+}
+
+/// Runs every line from `input` through `repl`, sending external commands to
+/// `spawner`.
+///
+/// When `prompt` is true, `> ` is written before each line read. Stops at
+/// `exit` or end of input. Returns the exit code: the `exit` argument, or the
+/// last command's status at end of input.
+pub fn run_reader_with<R: BufRead>(
+    repl: &mut Repl,
+    input: R,
+    sink: &mut dyn Sink,
+    prompt: bool,
+    spawner: &mut dyn Spawner,
 ) -> std::io::Result<i32> {
     let mut lines = input.lines();
     loop {
@@ -308,7 +368,7 @@ pub fn run_reader<R: BufRead>(
             return Ok(repl.last_status());
         };
         let line = line?;
-        match repl.run_line(&line, sink) {
+        match repl.run_line_with(&line, sink, spawner) {
             ReplOutcome::Continue(_) => {}
             ReplOutcome::Exit(code) => return Ok(code),
         }
@@ -384,6 +444,59 @@ mod tests {
         assert_eq!(out, ReplOutcome::Continue(127));
         assert_eq!(sink.stderr, "tpt-k: ls: not supported yet\n");
         assert!(sink.stdout.is_empty());
+    }
+
+    /// A spawner that records each argv and prints it, returning 0 unless the
+    /// program is named `fail`.
+    #[derive(Default)]
+    struct FakeSpawner {
+        calls: Vec<Vec<String>>,
+    }
+
+    impl Spawner for FakeSpawner {
+        fn spawn(&mut self, argv: &[String], sink: &mut dyn Sink) -> i32 {
+            self.calls.push(argv.to_vec());
+            sink.out(&format!("ran {}\n", argv.join(" ")));
+            if argv[0] == "fail" {
+                3
+            } else {
+                0
+            }
+        }
+    }
+
+    #[test]
+    fn external_command_goes_to_the_spawner_with_its_status() {
+        let mut repl = Repl::new();
+        let mut sink = Buffers::default();
+        let mut spawner = FakeSpawner::default();
+        let out = repl.run_line_with("tool -v x && fail", &mut sink, &mut spawner);
+        assert_eq!(out, ReplOutcome::Continue(3));
+        assert_eq!(
+            spawner.calls,
+            vec![
+                vec!["tool".to_string(), "-v".into(), "x".into()],
+                vec!["fail".to_string()],
+            ]
+        );
+        assert_eq!(sink.stdout, "ran tool -v x\nran fail\n");
+        let mut sink = Buffers::default();
+        let out = repl.run_line_with("fail a || echo recovered", &mut sink, &mut spawner);
+        assert_eq!(out, ReplOutcome::Continue(0));
+        assert_eq!(sink.stdout, "ran fail a\nrecovered\n");
+        assert_eq!(spawner.calls.len(), 3);
+    }
+
+    #[test]
+    fn spawner_status_is_the_last_status() {
+        let mut repl = Repl::new();
+        let mut sink = Buffers::default();
+        let mut spawner = FakeSpawner::default();
+        assert_eq!(
+            repl.run_line_with("fail", &mut sink, &mut spawner),
+            ReplOutcome::Continue(3)
+        );
+        assert_eq!(repl.last_status(), 3);
     }
 
     #[test]
