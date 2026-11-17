@@ -225,7 +225,9 @@ fn qemu_smoke(root: &Path) -> Result<(), String> {
         qemu,
         ovmf_code,
         ovmf_vars,
-        esp: runner::esp_dir(&plan),
+        // Boot the copy that `stage_esp` just wrote, under `out`, not the
+        // `target/tpt-k/esp` that only `cargo xtask image` stages.
+        esp: out.join("esp"),
         serial: Serial::Stdio,
         // Host time. The instruction counter is for `tpt-k-build replay`.
         icount: false,
