@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-hal-acpi"
 version = "0.0.0"
-description = "tpt-k HAL ACPI parser: MADT, MCFG, DSDT/SSDT."
+description = "tpt-k HAL ACPI parser: MADT, MCFG, and AML device discovery (_HID, _ADR)."
 readme = "README.md"
 keywords = ["acpi", "firmware", "madt", "tpt-k", "hardware"]
 categories = ["os", "hardware-support", "parser-implementations"]

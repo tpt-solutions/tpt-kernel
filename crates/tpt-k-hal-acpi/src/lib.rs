@@ -6,12 +6,15 @@
 //! needs no allocator and no privileged access. Every table is checked for its
 //! signature, its length and its checksum before any field is read.
 //!
-//! The DSDT and SSDT hold AML bytecode. Parsing AML is not done here yet.
+//! The DSDT and SSDT hold AML bytecode. The [`aml`] module walks it for device
+//! discovery only: `_HID` and `_ADR` per device. It does not evaluate methods.
 
 #![no_std]
 
 #[cfg(test)]
 extern crate std;
+
+pub mod aml;
 
 #[cfg(test)]
 mod fuzz_tests;
