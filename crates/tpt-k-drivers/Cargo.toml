@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-drivers"
 version = "0.0.0"
-description = "tpt-k driver manager daemon: monitors health and restarts crashed drivers (scaffold)."
+description = "tpt-k driver manager: restart and heartbeat policy for drivers. No process control yet."
 readme = "README.md"
 keywords = ["tpt-k", "drivers", "daemon", "supervisor", "microkernel"]
 categories = ["os"]

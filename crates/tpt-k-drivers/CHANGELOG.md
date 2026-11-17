@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Driver restart policy: a fixed-capacity `Manager` of `Driver`s with heartbeats, exponential backoff, a stable-run reset, give-up after too many crashes, and stop requests.
