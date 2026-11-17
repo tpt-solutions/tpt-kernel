@@ -26,7 +26,7 @@ Claims: 17 total, 15 bounded-proven, 2 tested, 2 with a waiver, 0 unproven.
 | IPC-6 A send or receive that is refused because a queue is full leaves the endpoint unchanged. | tpt-k-kernel-ipc | yes | bounded-proven | exhaustive `bounded_exhaustive_endpoint_invariants`; test `full_queues_refuse_instead_of_blocking` |
 | TOK-1 A capability token that is altered, or that was made under another key, is refused. | tpt-k-ipc-cap | yes | tested | test `altered_rights_or_object_fail_verification`; test `any_single_byte_change_to_a_token_fails_verification`; test `wrong_key_fails_verification`; test `token_does_not_verify_under_a_key_differing_in_one_byte` |
 | TOK-2 Attenuating a token never yields a right outside the source token's rights. | tpt-k-ipc-cap | yes | bounded-proven | exhaustive `attenuation_is_exact_over_all_rights_pairs`; test `attenuate_never_yields_rights_outside_source`; test `rights_narrow_but_never_widen` |
-| SER-1 The IPC frame decoder and its accessors never panic on hostile or mutated input. | tpt-k-ipc-serde | yes | tested | test `fuzz_decode_and_frame_access_never_panic`; test `fuzz_random_inputs_never_panic` |
+| SER-1 The IPC frame decoder and its accessors never panic on hostile or mutated input. | tpt-k-ipc-serde | yes | tested | test `mutation_decode_and_frame_access_never_panic`; test `mutation_random_inputs_never_panic` |
 | SRV-1 A service call is performed only when the token is valid and carries the rights the opcode needs; otherwise the service body does not run. | tpt-k-ipc | yes | bounded-proven | exhaustive `service_body_runs_exactly_when_token_is_valid_and_rights_allow`; test `missing_rights_are_denied_before_the_service_runs`; test `forged_token_is_denied`; test `token_under_another_key_is_denied` |
 
 ## Waivers

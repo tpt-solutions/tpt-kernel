@@ -166,3 +166,41 @@ those repo todos are done.
   - 2026-11-18, read-only run of `tpt-cargo-vitals check --enforce-license` (CI allowlist). This repo passes: 28 of 28 dependencies compliant, 0 vulnerabilities. The sibling repos do not pass: tpt-primitives (1 Apache-only, `borsh-derive`); tpt-simd (3, incl. `ciborium`); tpt-concord (3, incl. `MIT-0` and `ryu`); tpt-crypto (5, incl. `ciborium`, `borsh-derive`); tpt-crypto-rustls (1, `ring`, plus 7 advisories); tpt-mcpbox (48 non-compliant, plus 7 advisories; `DEP-AUDIT.md` says the wasmtime advisories were fixed and the rest are accepted in `deny.toml`, which this gate does not read). tpt-fabric and tpt-filesystem pass. Policy decisions are still open: `MIT-0`, `BSL-1.0` (for `ryu`), `CDLA-Permissive-2.0`, and the Apache-only replacements.
 - [ ] Publish tpt-kernel / first tagged release
   - Not done. The steps are in `docs/release.md`. The first version number is an open decision, and the release needs an explicit go-ahead.
+
+---
+
+## Phase 11 — Stub cleanup, adoption tooling and innovation (planned 2026-11-18)
+
+Each phase ends green on `scripts/check.sh`, and on `scripts/qemu-smoke.sh` for kernel changes. When an item closes, mirror it in the owning `docs/todos/<layer>.md`. 
+
+### 11a — Fix tractable stubs and doc mismatches
+- [x] `boot`: `tpt-k-boot/src/main.rs:6` and its README described the handoff argument as 0; they now describe the 80-byte handoff record (rdi) (2026-11-18)
+- [x] `boot`: note in `tpt-k-boot-fs/README.md` that the FAT32 driver is host-tested and not yet used by the loader (2026-11-18: the README already said this; checked)
+- [x] `docs`: reconcile the contradictory "static pool" vs "loader memory map" bullet in `docs/todos/kernel.md:31`; check `docs/architecture.md:50` and the `tpt-k-hal` README for the same drift (2026-11-18: the bullet is fixed; architecture.md and the tpt-k-hal README had no matching drift)
+- [x] `hal`/`ipc`: rename `fuzz_tests.rs` to `mutation_tests.rs` (acpi, fdt, pci, usb, ipc-serde) and fix the wording in docs and in Phase 5 above; real cargo-fuzz stays open (2026-11-18: also `tpt-k-root-spawn`, which had one; the assurance graph names are updated)
+- [x] `kernel`: faults from ring 3 (CS RPL 3) kill only the faulting thread instead of exiting QEMU (`idt.rs:345-364`); ring-0 faults still halt. Add a smoke-test case where a user thread faults and the kernel survives (2026-11-18: QEMU is installed on this machine at its default folder, and the smoke test passes with `user: fault vector 14`)
+- [ ] `kernel`: real `SYS_EXIT` teardown (release frames, revoke the thread's capability table, notify the parent) instead of the demo `finish()` counter (`main.rs:500-503`) (partly, 2026-11-18: decided, following the recommendation: an exiting thread deletes its handles without revoking, as seL4 does. Copies held elsewhere stay valid, and the derivation tree is re-linked (`cap::delete_across`, host-tested). Then unreferenced memory objects are reclaimed. Frames come back through that reclaim. Open: notifying the parent. There is no wait call yet; add it with the root server, not before)
+- [ ] `kernel`: free memory objects (`SYS_MEM_FREE` and free on revoke) so the 8 object slots stop leaking (`main.rs:862,896`) (partly, 2026-11-18: `SYS_MEM_FREE` frees an unmapped object, revokes its handles in every table, and returns its frames; mapped objects get `EBUSY`, since there is no unmap. Object 0 is never freed. 2026-11-18, later: an object is reclaimed when its last handle is revoked or deleted, or when a thread exits, if it is not mapped (boot self-test `mem: revoking the last handle reclaimed the object`). Open: unmap, so that a mapped object can be freed)
+- [x] `kernel`/`userland`: distinct negative error codes instead of `u64::MAX` for every failure (`main.rs:589`), mapped in `tpt-k-userland-libc::Errno` (2026-11-18: failures return a negated errno, `-4095..=-1`, for their cause, checked by a boot self-test. The user programs test with a range check. `EBUSY` and `EDEADLK` are added to `Errno`. Receive buffers keep `u64::MAX` as "no capability")
+- [x] `userland`: `Spawner` trait so the shell's pipes and redirects can be built and tested against a fake; `IsTerminal` check for the prompt (2026-11-18: the trait, `NoSpawner` and a fake-spawner test are in; pipes and redirections are still refused, so building them is the next step)
+- [x] `userland`: `extern "C"` exports in `tpt-k-userland-libc` for the string and errno helpers (syscall shims stay open until spawn exists) (2026-11-18: string and memory helpers, behind the `c-abi` feature; no errno export, since the errno values are not a C function)
+- [x] `kernel`: `tpt-k-kernel-arch-aarch64` is an empty crate listed as a TCB crate in CI; drop it from the list until it has code, and say so in its README (2026-11-18)
+- Left open on purpose (already tracked above or in layer todos): empty `tpt-k-root` and `tpt-k-drivers` `main`, priority scheduler wiring and inheritance, IRQ lines beyond the RTC, IOMMU, SMP, TCP retransmit, fs-bridge, synth WASM, AML coverage, virtio-net
+
+### 11b — Adoption tooling
+- Status 2026-11-18: the root README and `doctor` are done. The other tool items below are not started.
+- [x] `docs`: root `README.md` with a 5-minute quickstart (fetch-deps, doctor, run), the layer map and a status table (2026-11-18: the quickstart uses `doctor`, `fetch-deps`, `check` and `qemu-smoke`, which exist; `run` is not built yet, so it is not in it)
+- [x] `toolchain`: `tpt-k-build doctor` checks Rust 1.95.0 and targets, QEMU, OVMF, sibling repos and the git hooks path, and prints the exact fix command for each (Windows and Linux) (2026-11-18: probes the machine, and the report logic is host-tested. Run it from the repo root. On this machine it reports the git hooks path as a warning, because `core.hooksPath` is not set)
+- [ ] `toolchain`: `tpt-k-build run` builds the kernel and loader, assembles the ESP with `tpt-k-toolchain-iso`, and launches QEMU with serial on stdio
+- [ ] `toolchain`: `tpt-k-build image --run` executes the plan instead of printing "not run" (`main.rs:101-108`); extend `tests/cli.rs`
+- [ ] `toolchain`: cross-platform `cargo xtask` (check, build-kernel, qemu-smoke, fetch-deps) so Windows needs no bash; keep the shell scripts as thin wrappers
+- [ ] `toolchain`: `.devcontainer/` with Rust 1.95.0, both targets, QEMU, OVMF and `tpt-cargo-vitals`
+- [ ] `toolchain`: CI job that builds a bootable image with `tpt-k-build image` and uploads it as an artifact on every push to master (tagged-release attachment waits on the release go-ahead)
+
+### 11c — Innovative features
+- Status 2026-11-18: not started.
+- [ ] `kernel`/`toolchain`: capability inspector. A serial dump of the live capability graph (holder, object, rights) and `tpt-k-build caps` to render it as text or DOT
+- [ ] `root`/`toolchain`: policy-as-manifest. A new crate `tpt-k-root-manifest` compiles a TOML app manifest into the capability grants a process receives, and `tpt-k-build lint-manifest` flags over-broad grants. Property tests linked to `docs/assurance/invariants.md`
+- [ ] `kernel`/`toolchain`: deterministic replay. Record serial output and IRQ/timer events from a QEMU run (`-icount`), `tpt-k-build replay` diffs a re-run against the golden trace, and one trace is wired into `qemu-smoke.sh`
+- [ ] `toolchain`: assurance dashboard. `tpt-k-build assure --html` renders `docs/assurance/graph.json` (proven, tested, waived, linked to `spec.txt` sections) as one static page, uploaded from CI beside the image
+- [ ] Each new tool has a crate README, a CHANGELOG entry and, where it checks an invariant, an evidence item in the assurance graph

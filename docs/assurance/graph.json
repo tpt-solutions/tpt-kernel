@@ -300,13 +300,13 @@
       "evidence": [
         {
           "kind": "test",
-          "path": "crates/tpt-k-ipc-serde/src/fuzz_tests.rs",
-          "name": "fuzz_decode_and_frame_access_never_panic"
+          "path": "crates/tpt-k-ipc-serde/src/mutation_tests.rs",
+          "name": "mutation_decode_and_frame_access_never_panic"
         },
         {
           "kind": "test",
-          "path": "crates/tpt-k-ipc-serde/src/fuzz_tests.rs",
-          "name": "fuzz_random_inputs_never_panic"
+          "path": "crates/tpt-k-ipc-serde/src/mutation_tests.rs",
+          "name": "mutation_random_inputs_never_panic"
         }
       ],
       "waiver": "Deterministic mutation tests only, with no coverage guidance. A libFuzzer campaign is still open (todo.md, Phase 5)."

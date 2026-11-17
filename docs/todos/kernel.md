@@ -28,7 +28,7 @@ documented invariant.
 
 ### Kernel core
 - [x] `tpt-k-kernel-mem`: physical page frame allocator (2026-11-16: bitmap over caller-supplied storage, 7 host tests; not yet wired to the boot memory map)
-- [ ] `tpt-k-kernel-mem`: virtual memory management, per-process address spaces (partly, 2026-11-17: page tables with 4 KiB mapping and 2 MiB splitting, and address spaces made by forking the boot space; two user processes map the same virtual address to different frames and read back their own values in the QEMU run; the tables are handed out by the frame allocator (over a static pool; a boot memory map is still open), and the process handle tables are open) Page tables are allocated through `FrameAllocator` (2026-11-17), over a static pool; frames come from the loader's memory map (2026-11-17), and the free count is reported at boot.
+- [ ] `tpt-k-kernel-mem`: virtual memory management, per-process address spaces (partly, 2026-11-17: page tables with 4 KiB mapping and 2 MiB splitting, and address spaces made by forking the boot space; two user processes map the same virtual address to different frames and read back their own values in the QEMU run; the tables are handed out by the frame allocator, and the process handle tables are open) Page tables are allocated through `FrameAllocator` (2026-11-17) from a static pool, which is fixed in size; frames come from the loader's memory map (2026-11-17), and the free count is reported at boot.
 - [ ] `tpt-k-kernel-mem`: page clearing via `tpt-simd` (scalar fallback) (partly, 2026-11-17: `clear_frame` zeroes a frame with a scalar fill and refuses other lengths; the `tpt-simd` path is deferred)
 - [ ] `tpt-k-kernel-arch-x86_64`: APIC/timer, SYSCALL/SYSRET entry (partly, 2026-11-17: the local APIC timer drives preemption at 100 Hz, calibrated against the PIT, with the APIC page mapped uncached and the PIC fully masked; SYSCALL/SYSRET enter and leave the kernel. 2026-11-17: the IO-APIC routes the RTC (GSI 8) to vector 40 on the bootstrap CPU, and the QEMU smoke test sees two interrupts. Still open: delivering a device interrupt to a user-space driver, and SMP bring-up)
 - [x] `tpt-k-kernel-sched`: thread structures, context switching (2026-11-16: callee-saved switch on each thread's stack; QEMU smoke test shows two threads interleaving)
@@ -72,3 +72,12 @@ documented invariant.
 - [ ] Verify all kernel-side crates are `#![no_std]` and CI-checked for it
 - [ ] CI: QEMU boot smoke test job
 - [ ] CI: reusable workflow shared across the repos
+
+## Phase 11a — stub cleanup (2026-11-18)
+
+- [x] Docs: the page-table bullet (line 31) no longer contradicts itself. Page tables come from a fixed static pool, and frames come from the loader's memory map
+- [x] `tpt-k-kernel-arch-aarch64` removed from the CI `tcb-nostd` group until it has code
+- [x] Ring-3 faults kill only the faulting thread, with a smoke case (2026-11-18: `user: fault vector 14`; the kernel runs on)
+- [ ] Real `SYS_EXIT` teardown (partly, 2026-11-18: an exiting thread deletes its handles without revoking, seL4-style, and the derivation tree is re-linked (`cap::delete_across`). Unreferenced memory objects are reclaimed, which returns their frames. Open: notifying the parent. There is no wait call yet; add it with the root server)
+- [ ] `SYS_MEM_FREE` and freeing on revoke (partly, 2026-11-18: `SYS_MEM_FREE` frees an unmapped object, revokes its handles in every table, and returns its frames; mapped objects get `EBUSY` since there is no unmap. 2026-11-18, later: freeing on the last revoke or delete is done, and so is reclaim at thread exit. Open: unmap)
+- [x] Distinct negative error codes instead of `u64::MAX` (2026-11-18: negated errno, checked by a boot self-test; receive buffers keep `u64::MAX` as "no capability")

@@ -36,3 +36,7 @@ Rules: `#![no_std]` where it is in the TCB, 100% Rust, no C/C++ bindings.
 ## Phase 9 — Hardening
 
 - [ ] Root server drops supreme privileges after bootstrap (verified by test + Assurance Graph)
+
+## Phase 11a — stub cleanup (2026-11-18)
+
+- [x] `fuzz_tests.rs` renamed to `mutation_tests.rs` in `tpt-k-root-spawn`

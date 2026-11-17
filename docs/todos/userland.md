@@ -28,3 +28,9 @@ dependencies (dev-dependencies excepted).
 - [ ] Zero-copy packet path: NIC driver → network stack → applications
 - [ ] Network integration tests in QEMU (ping, TCP echo)
 - [ ] Milestone M6 (userland side)
+
+## Phase 11a — stub cleanup (2026-11-18)
+
+- [x] `Spawner` trait: non-builtin commands go to it; `NoSpawner` is the default. Pipes and redirections are still refused, so building them is the next step
+- [x] Binary writes the prompt only when stdin is a terminal (`IsTerminal`)
+- [x] `tpt-k-userland-libc`: C-named string and memory exports behind the `c-abi` feature (no errno export)

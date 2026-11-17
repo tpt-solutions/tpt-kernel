@@ -17,3 +17,8 @@ Scope: the build CLI `tpt-k-build`, and the assembly of bootable images.
 ## CI
 
 - [ ] Reusable workflow shared across the repos (see master plan)
+
+## Phase 11b — adoption tooling (2026-11-18)
+
+- [x] `tpt-k-build doctor`: checks Rust 1.95.0 and targets, QEMU, OVMF, sibling repos and the git hooks path, and prints the fix for each problem (Windows and Linux). Run it from the repo root
+- [ ] `tpt-k-build run`, `image --run`, `xtask`, `.devcontainer/` and the CI image job: not started

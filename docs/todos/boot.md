@@ -34,3 +34,8 @@ dependencies (dev-dependencies excepted).
 ## Open decisions
 
 - [x] Choose the handoff struct layout's versioning rule, so the kernel can reject an incompatible loader (2026-11-17: the kernel accepts exactly one version, `bootmap::VERSION`; any layout change bumps it, and the kernel refuses the rest. Documented in `bootmap.rs`)
+
+## Phase 11a — stub cleanup (2026-11-18)
+
+- [x] Loader and kernel docs describe the 80-byte handoff record in `rdi`, not a zero argument (`tpt-k-boot` and its README)
+- [x] `tpt-k-boot-fs` README notes that the FAT32 driver is host-tested and not yet used by the loader (already true; checked)

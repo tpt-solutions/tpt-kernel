@@ -11,6 +11,12 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 
 ### Added
 
+- `tpt-k-build doctor`: checks the Rust toolchain and targets, QEMU, OVMF, the sibling repos and the git hooks path. It prints the fix for each problem, for Windows and Linux.
+- Ring-3 exceptions end only the faulting thread. The kernel prints `user: fault vector N` and goes on. A smoke-test thread checks this.
+- `SYS_MEM_FREE` frees an unmapped memory object, revokes every handle to it in every table, and returns its frames. Mapped objects return `EBUSY`, since there is no unmap yet.
+- Root `README.md`: a quickstart, the layer map and a status table.
+- C-named exports of the string and memory helpers in `tpt-k-userland-libc`, behind its `c-abi` feature.
+- A `Spawner` trait in `tpt-k-userland`, so external commands and, later, pipes and redirections can be built and tested against a fake.
 - Bounded exhaustive checks of the capability table (`CAP-1` to `CAP-8`) and of
   endpoints (`IPC-1` to `IPC-6`), in `tpt-k-kernel-ipc`. They run every operation
   sequence up to a stated depth, and check the invariants after each step.
@@ -29,6 +35,20 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
   They point to the layer checklists and crate READMEs, which are kept current.
 - Capability slots compare for equality, so the invariant checks can see whether
   a refused operation changed the table.
+- The `fuzz_tests` modules in `tpt-k-hal-acpi`, `-fdt`, `-pci`, `-usb`,
+  `tpt-k-ipc-serde` and `tpt-k-root-spawn` are now `mutation_tests`. They were
+  never coverage-guided fuzzing. The assurance graph points at the new names.
+- The shell binary writes its `> ` prompt only when standard input is a terminal.
+  Piped transcripts contain only command output.
+- System calls that fail return a negated errno, `-4095..=-1`, instead of
+  `u64::MAX`. The numbers are those of `tpt-k-userland-libc::errno`, and a boot
+  self-test checks three of them. The demo's user programs now test for an error
+  with a range check, not `== -1`. Receive buffers still use `u64::MAX` for "no
+  capability", which is data and not an error.
+- The `tcb-nostd` CI group no longer lists `tpt-k-kernel-arch-aarch64`, which is
+  an empty stub. It is added back when it has code.
+- Module docs in `tpt-k-boot` and its README describe the 80-byte handoff record
+  in `rdi`, not a zero argument.
 
 ### Not yet
 

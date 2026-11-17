@@ -36,3 +36,7 @@ fuzz targets.
 ## Assurance
 
 - [ ] Fuzzing campaigns for the ACPI, PCI, FDT, and USB parsers (feeds Phase 5 in the master plan) (partly, 2026-11-17: deterministic mutation tests with 2000 cases each, no panics found; not coverage-guided fuzzing)
+
+## Phase 11a — stub cleanup (2026-11-18)
+
+- [x] `fuzz_tests.rs` renamed to `mutation_tests.rs` in `tpt-k-hal-acpi`, `-fdt`, `-pci` and `-usb`. These are deterministic mutation tests, not coverage-guided fuzzing; that stays open
