@@ -10,4 +10,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ### Added
 
 - Deterministic mutation tests cover the ELF planner.
+- `lifecycle` module: a fixed table of process slots with generations, spawn, load, exit and reap, and re-parenting to the root on exit. Host-tested. It is not wired to the kernel.
 - ELF64 x86-64 load planner: checks the header and program headers, and returns up to eight `PT_LOAD` segments (address, file range, memory size, R/W/X) and the entry point. Refuses writable+executable, overlapping, misaligned or out-of-image segments, and an entry outside an executable segment. It maps nothing; the caller does that from the plan.

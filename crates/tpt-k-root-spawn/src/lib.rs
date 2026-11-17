@@ -16,6 +16,8 @@
 #[cfg(test)]
 extern crate std;
 
+pub mod lifecycle;
+
 #[cfg(test)]
 mod fuzz_tests;
 
