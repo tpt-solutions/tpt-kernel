@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-toolchain-iso"
 version = "0.0.0"
-description = "tpt-k bootable UEFI ISO and raw disk image assembly (scaffold)."
+description = "tpt-k boot image assembly: a FAT32 writer for the boot partition."
 readme = "README.md"
 keywords = ["iso", "uefi", "disk-image", "tpt-k", "bootable"]
 categories = ["development-tools::build-utils", "os"]
@@ -12,3 +12,5 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+# The reader that checks the images, and the 8.3 name rule shared with it.
+tpt-k-boot-fs = { path = "../tpt-k-boot-fs" }

@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- FAT32 boot-partition writer (`build`): boot sector, FSInfo, backup boot sector, FAT copies, directories and 8.3 file names. Volumes are padded to the FAT32 minimum. Every image is round-trip tested through `tpt-k-boot-fs`.

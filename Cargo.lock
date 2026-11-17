@@ -358,6 +358,9 @@ version = "0.0.0"
 [[package]]
 name = "tpt-k-toolchain-iso"
 version = "0.0.0"
+dependencies = [
+ "tpt-k-boot-fs",
+]
 
 [[package]]
 name = "tpt-k-userland"
