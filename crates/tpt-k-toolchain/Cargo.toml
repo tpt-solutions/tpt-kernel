@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-toolchain"
 version = "0.0.0"
-description = "tpt-k build CLI: resolves deps, cross-compiles workspaces, links binaries (scaffold)."
+description = "tpt-k build planner and tpt-k-build CLI: prints per-layer cargo commands. It does not run cargo yet."
 readme = "README.md"
 keywords = ["build", "cross-compile", "linker", "tpt-k", "cli"]
 categories = ["development-tools", "development-tools::build-utils", "command-line-utilities"]
@@ -12,6 +12,8 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+# Reads `cargo metadata` output. Already in Cargo.lock, through tpt-primitives.
+serde_json = "1"
 
 [[bin]]
 name = "tpt-k-build"
