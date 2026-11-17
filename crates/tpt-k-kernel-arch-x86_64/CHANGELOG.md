@@ -9,6 +9,8 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- `set_user_fault_handler`: exceptions raised in ring 3 (CS RPL 3) go to the handler, which must not return. Ring-0 exceptions still print and stop the VM.
+
 - Port I/O, COM1 serial console, and QEMU debug-exit device.
 - Flat GDT, TSS, and IDT with CPU exception handlers and remapped IRQ vectors.
 - Legacy PIC and PIT timer, and nestable interrupt-state sections.

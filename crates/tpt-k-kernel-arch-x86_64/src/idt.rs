@@ -342,8 +342,20 @@ pub fn load() {
     }
 }
 
+/// Handler for an exception taken in ring 3, as a function address. Zero means
+/// none. It receives the vector, the faulting rip and the error code, and it must
+/// not return: it ends the faulting thread.
+static USER_FAULT: AtomicUsize = AtomicUsize::new(0);
+
+/// Routes exceptions raised in ring 3 to `handler`. Other exceptions, and those
+/// raised in ring 0, still print and stop the VM.
+pub fn set_user_fault_handler(handler: fn(u64, u64, u64) -> !) {
+    USER_FAULT.store(handler as usize, Ordering::Release);
+}
+
 /// Called by the common entry with the saved state. Returns to resume a
-/// breakpoint. Every other exception stops the VM.
+/// breakpoint. A ring-3 exception goes to the user fault handler, if one is set.
+/// Every other exception stops the VM.
 extern "C" fn exception_dispatch(frame: &mut TrapFrame) {
     let mut out = serial::Writer;
     match frame.vector {
@@ -356,6 +368,18 @@ extern "C" fn exception_dispatch(frame: &mut TrapFrame) {
             irq_dispatch((vector - u64::from(IRQ_BASE)) as usize);
         }
         vector => {
+            // The low two bits of the saved CS are the privilege level it came from.
+            if frame.cs & 3 == 3 {
+                let handler = USER_FAULT.load(Ordering::Acquire);
+                if handler != 0 {
+                    // SAFETY: a non-zero entry was stored by `set_user_fault_handler`
+                    // from a `fn(u64, u64, u64) -> !`, so it is a valid function
+                    // address of that type.
+                    let handler: fn(u64, u64, u64) -> ! =
+                        unsafe { core::mem::transmute::<usize, fn(u64, u64, u64) -> !>(handler) };
+                    handler(vector, frame.rip, frame.error_code);
+                }
+            }
             let _ = writeln!(
                 out,
                 "trap {} at rip {:#x}, error {:#x}",
