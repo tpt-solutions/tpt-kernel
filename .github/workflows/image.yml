@@ -31,10 +31,16 @@ jobs:
       - name: Build the boot image
         run: cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- image --run
 
-      - name: Upload the boot image
+      # The assurance dashboard, beside the image. The gate itself runs in ci.yml.
+      - name: Render the assurance dashboard
+        run: cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- assure --root . --html target/tpt-k/assurance.html > /dev/null
+
+      - name: Upload the boot image and the dashboard
         uses: actions/upload-artifact@v4
         with:
           name: tpt-k-boot-image
-          path: target/tpt-k/esp
+          path: |
+            target/tpt-k/esp
+            target/tpt-k/assurance.html
           if-no-files-found: error
           retention-days: 30
