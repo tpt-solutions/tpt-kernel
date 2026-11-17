@@ -36,7 +36,7 @@ use tpt_k_kernel_arch_x86_64::paging::{self, PageTables, Table, NO_CACHE, USER, 
 use tpt_k_kernel_arch_x86_64::{
     apic, gdt, idt, interrupts, ioapic, pic, qemu, rtc, serial, syscall,
 };
-use tpt_k_kernel_ipc::cap::{grant, revoke_across, CapError, CapTable};
+use tpt_k_kernel_ipc::cap::{delete_across, grant, revoke_across, CapError, CapTable};
 use tpt_k_kernel_ipc::endpoint::{Endpoint, Message, RecvOutcome, SendOutcome, Transfer};
 use tpt_k_kernel_ipc::{CapId, ObjectId, Rights};
 use tpt_k_kernel_mem::bootmap;
@@ -147,6 +147,7 @@ static mut ROOT_ENTRY: Option<UserEntry> = None;
 
 /// The driver thread's kernel stack, and its entry (set by the bootstrap).
 static mut STACK_DRIVER: UserThreadStack = UserThreadStack([0; 2048]);
+static mut STACK_FAULT: UserThreadStack = UserThreadStack([0; 2048]);
 static mut DRIVER_ENTRY: Option<UserEntry> = None;
 
 /// The driver: a user thread that waits for the RTC's interrupt through its
@@ -235,6 +236,8 @@ const SYS_SEND_BULK: u64 = 14;
 /// Waits for an interrupt on the interrupt object in `a0`. Returns how many have
 /// arrived since the last wait. See `irq_wait`.
 const SYS_IRQ_WAIT: u64 = 15;
+/// Frees a memory object and returns its frames. See [`free_memory`].
+const SYS_MEM_FREE: u64 = 16;
 
 /// Virtual address where the shared page is mapped. Both demo threads use it.
 /// The memory window: the only addresses a memory object may be mapped at. It
@@ -256,6 +259,9 @@ const MAX_OBJECT_PAGES: usize = 4;
 struct MemObject {
     pages: [u64; MAX_OBJECT_PAGES],
     count: usize,
+    /// Set once `SYS_MAP` has mapped the object into an address space. There is
+    /// no unmap yet, so a mapped object cannot be freed.
+    mapped: bool,
 }
 
 static mut MEM_OBJECTS: [Option<MemObject>; MAX_MEM_OBJECTS] = [None; MAX_MEM_OBJECTS];
@@ -295,7 +301,7 @@ const SPIN: u32 = 1_000_000;
 
 /// Demo threads that must finish before the run ends: two workers, the server,
 /// the user thread, two processes, and the driver.
-const DEMO_THREADS: usize = 11;
+const DEMO_THREADS: usize = 12;
 
 /// Demo threads that have finished.
 static FINISHED: AtomicUsize = AtomicUsize::new(0);
@@ -339,17 +345,15 @@ const IRQ_OBJECT: ObjectId = ObjectId(0x200);
 
 /// Waits for an interrupt on the interrupt object named by `cap`, and returns how
 /// many have arrived since the last wait. Blocks if none has.
-fn irq_wait(cap: CapId) -> Result<u64, &'static str> {
+fn irq_wait(cap: CapId) -> Result<u64, SysError> {
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
         // capability table and the scheduler.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
-            let object = (*addr_of_mut!(CAP_TABLES))[me]
-                .lookup(cap, Rights::READ)
-                .map_err(|_| "interrupt capability refused")?;
+            let object = (*addr_of_mut!(CAP_TABLES))[me].lookup(cap, Rights::READ)?;
             if object != IRQ_OBJECT {
-                return Err("not an interrupt object");
+                return Err(SysError::Invalid);
             }
             let pending = IRQ_PENDING.swap(0, Ordering::Relaxed);
             if pending > 0 {
@@ -360,12 +364,12 @@ fn irq_wait(cap: CapId) -> Result<u64, &'static str> {
             IRQ_WAITER.store(me + 1, Ordering::Relaxed);
             if !(*addr_of_mut!(SCHED)).block_current() {
                 IRQ_WAITER.store(0, Ordering::Relaxed);
-                return Err("wait would deadlock");
+                return Err(SysError::Deadlock);
             }
             let mut out = serial::Writer;
             let _ = writeln!(out, "irq: driver woke");
             match IRQ_PENDING.swap(0, Ordering::Relaxed) {
-                0 => Err("woken without an interrupt"),
+                0 => Err(SysError::Invalid),
                 count => Ok(count as u64),
             }
         }
@@ -477,17 +481,107 @@ fn write_received(address: u64, message: Message, transfer: Transfer) -> bool {
     true
 }
 
+/// Why a system call failed. A failed call returns the negated errno value, so
+/// every failure is in `-4095..=-1` as a `u64` (see [`is_error`]). The numbers
+/// are those of `tpt-k-userland-libc::errno`. The kernel cannot depend on that
+/// crate, so they are repeated here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SysError {
+    /// A user pointer is outside the memory the call may use.
+    Fault,
+    /// An argument, or the kind of an object, is not one the call takes.
+    Invalid,
+    /// The handle is stale or was never valid.
+    BadHandle,
+    /// The capability lacks a right the call needs.
+    Denied,
+    /// The frame allocator has no frame left.
+    NoMemory,
+    /// A table, an object pool or an endpoint has no room left.
+    Full,
+    /// The call would block, and no other thread can run to wake it.
+    Deadlock,
+    /// The object is in use in a way the call cannot undo.
+    Busy,
+    /// The call number is not known.
+    NoSys,
+}
+
+impl SysError {
+    /// The errno value, as a positive number.
+    const fn errno(self) -> u64 {
+        match self {
+            Self::Fault => 14,
+            Self::Invalid => 22,
+            Self::BadHandle => 9,
+            Self::Denied => 13,
+            Self::NoMemory => 12,
+            Self::Full => 28,
+            Self::Deadlock => 35,
+            Self::Busy => 16,
+            Self::NoSys => 38,
+        }
+    }
+
+    /// The value a failed call returns in `rax`: the negated errno.
+    const fn code(self) -> u64 {
+        self.errno().wrapping_neg()
+    }
+
+    /// A short description, for the boot messages.
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Fault => "bad user address",
+            Self::Invalid => "invalid argument",
+            Self::BadHandle => "bad handle",
+            Self::Denied => "access denied",
+            Self::NoMemory => "out of memory",
+            Self::Full => "no room left",
+            Self::Deadlock => "would deadlock",
+            Self::Busy => "object is in use",
+            Self::NoSys => "no such system call",
+        }
+    }
+}
+
+impl From<CapError> for SysError {
+    fn from(err: CapError) -> Self {
+        match err {
+            CapError::InvalidHandle => Self::BadHandle,
+            CapError::Denied | CapError::NotGrantable => Self::Denied,
+            CapError::Full => Self::Full,
+        }
+    }
+}
+
+/// Whether a system call result is a failure code: the negated errno values,
+/// `-4095..=-1`. Handles, slot numbers and byte counts are never that large.
+fn is_error(raw: u64) -> bool {
+    raw > (-4096i64) as u64
+}
+
 /// The syscall handler. `number` selects the call, and `a0`, `a1`, `a2` are its
-/// arguments. A failed call returns `u64::MAX`.
+/// arguments. A failed call returns a negated errno (see [`SysError`]).
 extern "C" fn syscall_dispatch(number: u64, a0: u64, a1: u64, a2: u64) -> u64 {
-    match number {
+    match syscall(number, a0, a1, a2) {
+        Ok(value) => value,
+        Err(error) => error.code(),
+    }
+}
+
+/// The body of [`syscall_dispatch`], with the failure as a [`SysError`].
+fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
+    Ok(match number {
         SYS_WRITE => {
             // The message lives in the user code pages, and the copy must stay
             // inside them.
             let start = core::ptr::addr_of!(__user_code_start) as u64;
             let end = core::ptr::addr_of!(__user_code_end) as u64;
-            if a1 > MAX_WRITE || !within(start, end, a0, a1) {
-                return u64::MAX;
+            if a1 > MAX_WRITE {
+                return Err(SysError::Invalid);
+            }
+            if !within(start, end, a0, a1) {
+                return Err(SysError::Fault);
             }
             for offset in 0..a1 {
                 // SAFETY: the range was checked to lie inside the user code pages,
@@ -500,63 +594,42 @@ extern "C" fn syscall_dispatch(number: u64, a0: u64, a1: u64, a2: u64) -> u64 {
         SYS_EXIT => {
             let mut out = serial::Writer;
             let _ = writeln!(out, "user: exit {a0}");
+            release_handles();
             finish()
         }
         SYS_SEND => {
-            let Some(message) = read_message(a1) else {
-                return u64::MAX;
-            };
-            match ipc_send(CapId::from_raw(a0), message) {
-                Ok(()) => 0,
-                Err(_) => u64::MAX,
-            }
+            let message = read_message(a1).ok_or(SysError::Fault)?;
+            ipc_send(CapId::from_raw(a0), message)?;
+            0
         }
-        SYS_RECV => match ipc_recv(CapId::from_raw(a0)) {
-            Ok(message) => {
-                if write_message(a1, message) {
-                    0
-                } else {
-                    u64::MAX
-                }
+        SYS_RECV => {
+            let message = ipc_recv(CapId::from_raw(a0))?;
+            if !write_message(a1, message) {
+                return Err(SysError::Fault);
             }
-            Err(_) => u64::MAX,
-        },
+            0
+        }
         SYS_YIELD => {
             yield_now();
             0
         }
-        SYS_GRANT => grant_handle(CapId::from_raw(a0), a1, a2).unwrap_or(u64::MAX),
-        SYS_REVOKE => match revoke_handle(CapId::from_raw(a0)) {
-            Ok(()) => 0,
-            Err(_) => u64::MAX,
-        },
-        SYS_SPAWN => match spawn_child(a0, CapId::from_raw(a1), a2) {
-            Ok(slot) => slot as u64,
-            Err(_) => u64::MAX,
-        },
-        SYS_SPAWN_IMAGE => match spawn_image(a0) {
-            Ok(slot) => slot as u64,
-            Err(_) => u64::MAX,
-        },
-        SYS_MEM_CREATE => match create_memory(a0) {
-            Ok(cap) => cap.raw(),
-            Err(_) => u64::MAX,
-        },
+        SYS_GRANT => grant_handle(CapId::from_raw(a0), a1, a2)?,
+        SYS_REVOKE => {
+            revoke_handle(CapId::from_raw(a0))?;
+            0
+        }
+        SYS_SPAWN => spawn_child(a0, CapId::from_raw(a1), a2)? as u64,
+        SYS_SPAWN_IMAGE => spawn_image(a0)? as u64,
+        SYS_MEM_CREATE => create_memory(a0)?.raw(),
         SYS_SEND_CAP => {
-            let Some(message) = read_message(a1) else {
-                return u64::MAX;
-            };
-            match ipc_send_transfer(CapId::from_raw(a0), message, Some(CapId::from_raw(a2))) {
-                Ok(()) => 0,
-                Err(_) => u64::MAX,
-            }
+            let message = read_message(a1).ok_or(SysError::Fault)?;
+            ipc_send_transfer(CapId::from_raw(a0), message, Some(CapId::from_raw(a2)))?;
+            0
         }
         SYS_SEND_BULK => {
-            let Some(message) = read_message(a1) else {
-                return u64::MAX;
-            };
+            let message = read_message(a1).ok_or(SysError::Fault)?;
             if !in_user_pages(a2, 16) {
-                return u64::MAX;
+                return Err(SysError::Fault);
             }
             // SAFETY: the two words lie in user memory (checked above), which is
             // mapped in the caller's address space, where this syscall runs.
@@ -566,28 +639,27 @@ extern "C" fn syscall_dispatch(number: u64, a0: u64, a1: u64, a2: u64) -> u64 {
                     ((a2 + 8) as *const u64).read_volatile(),
                 )
             };
-            match send_bulk(CapId::from_raw(a0), message, source, len) {
-                Ok(()) => 0,
-                Err(_) => u64::MAX,
-            }
+            send_bulk(CapId::from_raw(a0), message, source, len)?;
+            0
         }
-        SYS_IRQ_WAIT => irq_wait(CapId::from_raw(a0)).unwrap_or(u64::MAX),
-        SYS_RECV_CAP => match ipc_recv_transfer(CapId::from_raw(a0)) {
-            Ok((message, transfer)) => {
-                if write_received(a1, message, transfer) {
-                    0
-                } else {
-                    u64::MAX
-                }
+        SYS_IRQ_WAIT => irq_wait(CapId::from_raw(a0))?,
+        SYS_RECV_CAP => {
+            let (message, transfer) = ipc_recv_transfer(CapId::from_raw(a0))?;
+            if !write_received(a1, message, transfer) {
+                return Err(SysError::Fault);
             }
-            Err(_) => u64::MAX,
-        },
-        SYS_MAP => match map_handle(CapId::from_raw(a0), a1) {
-            Ok(()) => 0,
-            Err(_) => u64::MAX,
-        },
-        _ => u64::MAX,
-    }
+            0
+        }
+        SYS_MAP => {
+            map_handle(CapId::from_raw(a0), a1)?;
+            0
+        }
+        SYS_MEM_FREE => {
+            free_memory(CapId::from_raw(a0))?;
+            0
+        }
+        _ => return Err(SysError::NoSys),
+    })
 }
 
 /// The IPC user program. Its first two arguments are the send handle and the
@@ -617,8 +689,9 @@ extern "C" fn user_program() -> ! {
         "mov rsi, r14",
         "mov eax, {send}",
         "syscall",
-        "cmp rax, -1",
-        "jne 5f",
+        // A failed call returns a negated errno, so -4095..=-1 is an error.
+        "cmp rax, -4096",
+        "jbe 5f",
         // Send the request, then receive the reply into the same buffer.
         "mov rdi, r12",
         "mov rsi, r14",
@@ -820,31 +893,30 @@ fn root_index_of(cr3: u64) -> Option<usize> {
 
 /// Maps the shared page at `SHARED_VIRT` in the calling thread's address space.
 /// The page is writable if the handle carries WRITE, and read-only otherwise.
-fn map_handle(cap: CapId, vaddr: u64) -> Result<(), &'static str> {
+fn map_handle(cap: CapId, vaddr: u64) -> Result<(), SysError> {
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
         // tables.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
             let table = (*addr_of_mut!(CAP_TABLES))[me];
-            let object = table
-                .lookup(cap, Rights::READ)
-                .map_err(|_| "map capability refused")?;
-            let index = mem_object_index(object).ok_or("not a memory object")?;
-            let memory = (*addr_of_mut!(MEM_OBJECTS))[index].ok_or("memory object is gone")?;
+            let object = table.lookup(cap, Rights::READ)?;
+            let index = mem_object_index(object).ok_or(SysError::Invalid)?;
+            let memory = (*addr_of_mut!(MEM_OBJECTS))[index].ok_or(SysError::BadHandle)?;
             let len = memory.count as u64 * FRAME_SIZE;
-            let end = vaddr
-                .checked_add(len)
-                .ok_or("map address outside the memory window")?;
+            let end = vaddr.checked_add(len).ok_or(SysError::Invalid)?;
             if !vaddr.is_multiple_of(FRAME_SIZE) || vaddr < MEM_WINDOW_START || end > MEM_WINDOW_END
             {
-                return Err("map address outside the memory window");
+                return Err(SysError::Invalid);
             }
             let writable = table.lookup(cap, Rights::WRITE).is_ok();
-            let root =
-                root_index_of((*addr_of_mut!(CONTEXTS))[me].cr3).ok_or("unknown address space")?;
+            let root = root_index_of((*addr_of_mut!(CONTEXTS))[me].cr3).ok_or(SysError::Invalid)?;
             for (page, &phys) in memory.pages[..memory.count].iter().enumerate() {
-                map_into_root(root, vaddr + page as u64 * FRAME_SIZE, phys, writable)?;
+                map_into_root(root, vaddr + page as u64 * FRAME_SIZE, phys, writable)
+                    .map_err(|_| SysError::NoMemory)?;
+            }
+            if let Some(object) = (*addr_of_mut!(MEM_OBJECTS))[index].as_mut() {
+                object.mapped = true;
             }
             Ok(())
         }
@@ -860,9 +932,9 @@ fn mem_object_index(object: ObjectId) -> Option<usize> {
 /// Creates a memory object of `pages` zeroed pages from the frame allocator, and
 /// returns a capability for it with all rights in the calling thread's table.
 /// Objects are never freed yet.
-fn create_memory(pages: u64) -> Result<CapId, &'static str> {
+fn create_memory(pages: u64) -> Result<CapId, SysError> {
     if pages == 0 || pages > MAX_OBJECT_PAGES as u64 {
-        return Err("bad page count");
+        return Err(SysError::Invalid);
     }
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
@@ -870,8 +942,52 @@ fn create_memory(pages: u64) -> Result<CapId, &'static str> {
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
             let (index, memory) = allocate_object(pages as usize, None)?;
-            mint_object(me, index, Rights::ALL, memory)
-                .map_err(|_| "cannot mint the memory capability")
+            mint_object(me, index, Rights::ALL, memory).map_err(SysError::from)
+        }
+    })
+}
+
+/// Frees the memory object that `cap` names, and returns its frames.
+///
+/// Every capability to the object is revoked first, in every table, so no handle
+/// can reach the object slot once it is free and may be reused. An object that
+/// has been mapped cannot be freed, because nothing unmaps it yet, and object 0,
+/// the demo's static page, is never freed.
+fn free_memory(cap: CapId) -> Result<(), SysError> {
+    const SLOTS: usize = 8;
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the
+        // capability tables, the object table and the frame allocator.
+        unsafe {
+            let me = (*addr_of_mut!(SCHED)).current();
+            let object = (*addr_of_mut!(CAP_TABLES))[me].lookup(cap, Rights::WRITE)?;
+            let index = mem_object_index(object).ok_or(SysError::Invalid)?;
+            if index == 0 {
+                return Err(SysError::Invalid);
+            }
+            let memory = (*addr_of_mut!(MEM_OBJECTS))[index].ok_or(SysError::BadHandle)?;
+            if memory.mapped {
+                return Err(SysError::Busy);
+            }
+            let tables = &mut *addr_of_mut!(CAP_TABLES);
+            for holder in 0..tables.len() {
+                for slot in 0..SLOTS {
+                    let Some(handle) = tables[holder].handle_at(slot) else {
+                        continue;
+                    };
+                    if tables[holder].lookup(handle, Rights::NONE) == Ok(object) {
+                        // An earlier revoke in this loop may already have removed
+                        // this handle's copy, so the result is not checked.
+                        let _ = revoke_across(tables, holder, handle);
+                    }
+                }
+            }
+            (*addr_of_mut!(MEM_OBJECTS))[index] = None;
+            let alloc = (*addr_of_mut!(FRAME_ALLOC))
+                .as_mut()
+                .ok_or(SysError::NoMemory)?;
+            release_pages(alloc, &memory.pages[..memory.count]);
+            Ok(())
         }
     })
 }
@@ -887,26 +1003,27 @@ fn create_memory(pages: u64) -> Result<CapId, &'static str> {
 unsafe fn allocate_object(
     count: usize,
     payload: Option<(u64, usize)>,
-) -> Result<(usize, MemObject), &'static str> {
+) -> Result<(usize, MemObject), SysError> {
     // SAFETY: as stated above.
     unsafe {
         let index = (*addr_of_mut!(MEM_OBJECTS))
             .iter()
             .position(|slot| slot.is_none())
-            .ok_or("no free memory object slot")?;
+            .ok_or(SysError::Full)?;
         let alloc = (*addr_of_mut!(FRAME_ALLOC))
             .as_mut()
-            .ok_or("no frame allocator")?;
+            .ok_or(SysError::NoMemory)?;
         let mut memory = MemObject {
             pages: [0; MAX_OBJECT_PAGES],
             count,
+            mapped: false,
         };
         for page in 0..count {
             match alloc.allocate() {
                 Some(frame) => memory.pages[page] = frame.start(),
                 None => {
                     release_pages(alloc, &memory.pages[..page]);
-                    return Err("out of frames");
+                    return Err(SysError::NoMemory);
                 }
             }
         }
@@ -971,12 +1088,12 @@ fn in_user_pages(address: u64, len: u64) -> bool {
 /// a capability. The copy is taken at send time, so the sender may reuse its
 /// buffer at once. The sender's temporary handle to the object is revoked when
 /// the send completes, so the receiver's copy is the only one.
-fn send_bulk(channel: CapId, message: Message, source: u64, len: u64) -> Result<(), &'static str> {
+fn send_bulk(channel: CapId, message: Message, source: u64, len: u64) -> Result<(), SysError> {
     if len == 0 || len > MAX_OBJECT_PAGES as u64 * FRAME_SIZE {
-        return Err("bad payload length");
+        return Err(SysError::Invalid);
     }
     if !in_user_pages(source, len) {
-        return Err("payload is not in user memory");
+        return Err(SysError::Fault);
     }
     let count = len.div_ceil(FRAME_SIZE) as usize;
     let temporary = interrupts::without(|| {
@@ -984,8 +1101,7 @@ fn send_bulk(channel: CapId, message: Message, source: u64, len: u64) -> Result<
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
             let (index, memory) = allocate_object(count, Some((source, len as usize)))?;
-            mint_object(me, index, Rights::ALL, memory)
-                .map_err(|_| "cannot mint the bulk capability")
+            mint_object(me, index, Rights::ALL, memory).map_err(SysError::from)
         }
     })?;
     let sent = ipc_send_transfer(channel, message, Some(temporary));
@@ -1091,7 +1207,7 @@ fn finish() -> ! {
 
 /// Sends `message` on the endpoint named by `cap`, blocking if the queue has no
 /// receiver.
-fn ipc_send(cap: CapId, message: Message) -> Result<(), &'static str> {
+fn ipc_send(cap: CapId, message: Message) -> Result<(), SysError> {
     ipc_send_transfer(cap, message, None)
 }
 
@@ -1100,7 +1216,7 @@ fn ipc_send(cap: CapId, message: Message) -> Result<(), &'static str> {
 /// receiver is already waiting, the copy is installed in its table now, so the
 /// receiver gets it atomically with the message. Otherwise the sender stays
 /// blocked with its handle, and the receiver copies it when it takes the message.
-fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result<(), &'static str> {
+fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result<(), SysError> {
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
         // kernel tables. The table is copied, so the sender's and the receiver's
@@ -1109,17 +1225,13 @@ fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
             let table = (*addr_of_mut!(CAP_TABLES))[me];
-            let object = table
-                .lookup(cap, Rights::WRITE)
-                .map_err(|_| "send capability refused")?;
+            let object = table.lookup(cap, Rights::WRITE)?;
             if let Some(handle) = transfer {
-                table
-                    .lookup(handle, Rights::GRANT)
-                    .map_err(|_| "transfer capability refused")?;
+                table.lookup(handle, Rights::GRANT)?;
             }
             let endpoint = (*addr_of_mut!(ENDPOINTS))
                 .get_mut(object.0 as usize)
-                .ok_or("no such endpoint")?;
+                .ok_or(SysError::Invalid)?;
             let waiting = endpoint.next_receiver();
             let stored = match (transfer, waiting) {
                 (Some(handle), Some(receiver)) => Some(install_from(me, handle, receiver)?),
@@ -1134,7 +1246,7 @@ fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result
                     if let (Some(installed), Some(receiver)) = (stored, waiting) {
                         let _ = (*addr_of_mut!(CAP_TABLES))[receiver].revoke(installed);
                     }
-                    return Err("endpoint full");
+                    return Err(SysError::Full);
                 }
             };
             match outcome {
@@ -1146,7 +1258,7 @@ fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result
                     if sched.block_current() {
                         Ok(())
                     } else {
-                        Err("send would deadlock")
+                        Err(SysError::Deadlock)
                     }
                 }
             }
@@ -1156,49 +1268,44 @@ fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result
 
 /// Receives a message from the endpoint named by `cap`, blocking until one is
 /// sent.
-fn ipc_recv(cap: CapId) -> Result<Message, &'static str> {
+fn ipc_recv(cap: CapId) -> Result<Message, SysError> {
     ipc_recv_transfer(cap).map(|(message, _)| message)
 }
 
 /// Copies handle `handle` of thread `from` into thread `to`, with the same
 /// rights, and returns the new handle. The copy records its origin, so it is
 /// revoked with the original. Must be called with interrupts off.
-fn install_from(from: usize, handle: CapId, to: usize) -> Result<CapId, &'static str> {
+fn install_from(from: usize, handle: CapId, to: usize) -> Result<CapId, SysError> {
     // SAFETY: interrupts are off, so this is the only code using the tables. The
     // source is copied, so the two tables are not borrowed at once.
     unsafe {
         let source = (*addr_of_mut!(CAP_TABLES))[from];
-        let rights = source
-            .rights_of(handle)
-            .map_err(|_| "transfer capability refused")?;
-        grant(
+        let rights = source.rights_of(handle)?;
+        Ok(grant(
             &source,
             from,
             handle,
             &mut (*addr_of_mut!(CAP_TABLES))[to],
             rights,
-        )
-        .map_err(|_| "cannot install the transfer")
+        )?)
     }
 }
 
 /// Receives a message and the capability sent with it, if any. The capability
 /// is copied into the receiver's table, and its new handle is returned.
-fn ipc_recv_transfer(cap: CapId) -> Result<(Message, Transfer), &'static str> {
+fn ipc_recv_transfer(cap: CapId) -> Result<(Message, Transfer), SysError> {
     interrupts::without(|| {
         // SAFETY: as for `ipc_send`.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
-            let object = (*addr_of_mut!(CAP_TABLES))[me]
-                .lookup(cap, Rights::READ)
-                .map_err(|_| "receive capability refused")?;
+            let object = (*addr_of_mut!(CAP_TABLES))[me].lookup(cap, Rights::READ)?;
             let endpoint = (*addr_of_mut!(ENDPOINTS))
                 .get_mut(object.0 as usize)
-                .ok_or("no such endpoint")?;
+                .ok_or(SysError::Invalid)?;
             let sched = &mut *addr_of_mut!(SCHED);
             match endpoint
                 .receive(sched.current())
-                .map_err(|_| "endpoint full")?
+                .map_err(|_| SysError::Full)?
             {
                 RecvOutcome::Received {
                     message,
@@ -1215,12 +1322,12 @@ fn ipc_recv_transfer(cap: CapId) -> Result<(Message, Transfer), &'static str> {
                 }
                 RecvOutcome::Blocked => {
                     if !sched.block_current() {
-                        return Err("receive would deadlock");
+                        return Err(SysError::Deadlock);
                     }
                     // The sender installed the copy before waking us.
                     endpoint
                         .take_delivery_transfer(sched.current())
-                        .ok_or("woken without a message")
+                        .ok_or(SysError::Invalid)
                 }
             }
         }
@@ -1238,16 +1345,16 @@ fn server_handles() -> [CapId; 2] {
 /// Copies handle `handle` of the running thread into the table of thread slot
 /// `target`, with `rights` (a raw mask: 1 is READ, 2 is WRITE, 4 is GRANT). Returns
 /// the new handle's raw value, which is valid in the target's table.
-fn grant_handle(handle: CapId, target: u64, rights: u64) -> Option<u64> {
-    let rights = Rights::from_bits(rights)?;
-    let target = usize::try_from(target).ok()?;
+fn grant_handle(handle: CapId, target: u64, rights: u64) -> Result<u64, SysError> {
+    let rights = Rights::from_bits(rights).ok_or(SysError::Invalid)?;
+    let target = usize::try_from(target).map_err(|_| SysError::Invalid)?;
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
         // tables. The source is copied, so the two tables are not borrowed at once.
         unsafe {
             let sched = &*addr_of_mut!(SCHED);
             if target >= MAX_THREADS || sched.threads()[target].state == State::Free {
-                return None;
+                return Err(SysError::Invalid);
             }
             let me = sched.current();
             let source = (*addr_of_mut!(CAP_TABLES))[me];
@@ -1257,24 +1364,85 @@ fn grant_handle(handle: CapId, target: u64, rights: u64) -> Option<u64> {
                 handle,
                 &mut (*addr_of_mut!(CAP_TABLES))[target],
                 rights,
-            )
-            .ok()?;
-            Some(copy.raw())
+            )?;
+            Ok(copy.raw())
         }
     })
 }
 
 /// Revokes handle `handle` of the running thread, together with every copy made
-/// from it, in any table.
-fn revoke_handle(handle: CapId) -> Result<(), CapError> {
-    interrupts::without(|| {
+/// from it, in any table. Memory objects that nothing refers to any more are
+/// then reclaimed.
+fn revoke_handle(handle: CapId) -> Result<(), SysError> {
+    interrupts::without(|| -> Result<(), SysError> {
         // SAFETY: interrupts are off, so this thread is the only one using the
         // tables.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
-            revoke_across(&mut *addr_of_mut!(CAP_TABLES), me, handle)
+            revoke_across(&mut *addr_of_mut!(CAP_TABLES), me, handle)?;
         }
-    })
+        Ok(())
+    })?;
+    reclaim_unreferenced_objects();
+    Ok(())
+}
+
+/// Lets go of every capability the running thread holds, as it exits. Each
+/// handle is deleted without revoking anything else, so copies that other threads
+/// hold stay valid. Then the memory objects nothing refers to are reclaimed.
+fn release_handles() {
+    const SLOTS: usize = 8;
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the
+        // capability tables.
+        unsafe {
+            let me = (*addr_of_mut!(SCHED)).current();
+            let tables = &mut *addr_of_mut!(CAP_TABLES);
+            for slot in 0..SLOTS {
+                if let Some(handle) = tables[me].handle_at(slot) {
+                    let _ = delete_across(tables, me, handle);
+                }
+            }
+        }
+    });
+    reclaim_unreferenced_objects();
+}
+
+/// Frees each memory object that is not mapped and that no thread's table holds a
+/// handle to, and returns its frames. Object 0, the demo's static page, is never
+/// freed. Must be called from a thread, not from an interrupt.
+fn reclaim_unreferenced_objects() {
+    const SLOTS: usize = 8;
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the
+        // object table, the capability tables and the frame allocator.
+        unsafe {
+            let tables = &*addr_of_mut!(CAP_TABLES);
+            for index in 1..MAX_MEM_OBJECTS {
+                let Some(memory) = (*addr_of_mut!(MEM_OBJECTS))[index] else {
+                    continue;
+                };
+                if memory.mapped {
+                    continue;
+                }
+                let object = ObjectId(MEM_OBJECT_BASE + index as u32);
+                let referenced = tables.iter().any(|table| {
+                    (0..SLOTS).any(|slot| {
+                        table
+                            .handle_at(slot)
+                            .is_some_and(|handle| table.lookup(handle, Rights::NONE) == Ok(object))
+                    })
+                });
+                if referenced {
+                    continue;
+                }
+                (*addr_of_mut!(MEM_OBJECTS))[index] = None;
+                if let Some(alloc) = (*addr_of_mut!(FRAME_ALLOC)).as_mut() {
+                    release_pages(alloc, &memory.pages[..memory.count]);
+                }
+            }
+        }
+    });
 }
 
 /// Checks the grant path through the syscall dispatcher. The bootstrap thread
@@ -1288,7 +1456,7 @@ fn grant_self_test(target: usize) -> bool {
         Err(_) => return false,
     };
     let read_raw = syscall_dispatch(SYS_GRANT, root.raw(), target as u64, 1);
-    if read_raw == u64::MAX {
+    if is_error(read_raw) {
         return false;
     }
     let read = CapId::from_raw(read_raw);
@@ -1310,14 +1478,128 @@ fn grant_self_test(target: usize) -> bool {
         grant(&source, target, read, other, Rights::READ) == Err(CapError::NotGrantable)
     };
     // Slot 7 is never used by the demo, so it is free.
-    let free_refused =
-        syscall_dispatch(SYS_GRANT, root.raw(), MAX_THREADS as u64 - 1, 1) == u64::MAX;
+    let free_refused = syscall_dispatch(SYS_GRANT, root.raw(), MAX_THREADS as u64 - 1, 1)
+        == SysError::Invalid.code();
     // Revoking the root also revokes the copy that the target holds.
     let revoked = syscall_dispatch(SYS_REVOKE, root.raw(), 0, 0) == 0;
     // SAFETY: as above.
     let gone = unsafe { (*addr_of_mut!(CAP_TABLES))[target].lookup(read, Rights::READ) }
         == Err(CapError::InvalidHandle);
     reads && no_write && onward_refused && free_refused && revoked && gone
+}
+
+/// Free frames in the allocator, or `None` before it exists.
+fn free_frame_count() -> Option<usize> {
+    // SAFETY: called by the bootstrap thread, before the demo threads run.
+    unsafe {
+        (*addr_of_mut!(FRAME_ALLOC))
+            .as_ref()
+            .map(|alloc| alloc.free_frames())
+    }
+}
+
+/// Creates a two-page memory object and frees it. Checks that the frames come
+/// back to the allocator, and that the handle no longer maps anything.
+fn mem_free_self_test() -> bool {
+    let (Some(before), handle) = (
+        free_frame_count(),
+        syscall_dispatch(SYS_MEM_CREATE, 2, 0, 0),
+    ) else {
+        return false;
+    };
+    if is_error(handle) || free_frame_count() != Some(before - 2) {
+        return false;
+    }
+    if syscall_dispatch(SYS_MEM_FREE, handle, 0, 0) != 0 {
+        return false;
+    }
+    let returned = free_frame_count() == Some(before);
+    let stale =
+        syscall_dispatch(SYS_MAP, handle, MEM_WINDOW_START, 0) == SysError::BadHandle.code();
+    returned && stale
+}
+
+/// Creates a memory object and revokes its only handle. Checks that the object's
+/// frames come back, so the revoke reclaimed it.
+fn reclaim_self_test() -> bool {
+    let Some(before) = free_frame_count() else {
+        return false;
+    };
+    let handle = syscall_dispatch(SYS_MEM_CREATE, 1, 0, 0);
+    if is_error(handle) {
+        return false;
+    }
+    if syscall_dispatch(SYS_REVOKE, handle, 0, 0) != 0 {
+        return false;
+    }
+    free_frame_count() == Some(before)
+}
+
+/// Prints the live capability graph, one line per capability, between
+/// `caps: begin` and `caps: end`. Each line names the table and slot, the object,
+/// the rights as letters (R, W, G, or `-`), the parent slot in the same table, and
+/// the origin as `table.slot` for a copy. `tpt-k-build caps` reads these lines.
+fn dump_capabilities() {
+    const SLOTS: usize = 8;
+    let mut out = serial::Writer;
+    let _ = writeln!(out, "caps: begin");
+    // SAFETY: called by the bootstrap thread before the demo threads run.
+    let tables = unsafe { &*addr_of_mut!(CAP_TABLES) };
+    for (table_index, table) in tables.iter().enumerate() {
+        for slot in 0..SLOTS {
+            let Some(handle) = table.handle_at(slot) else {
+                continue;
+            };
+            let Ok(object) = table.lookup(handle, Rights::NONE) else {
+                continue;
+            };
+            let rights = table.rights_of(handle).unwrap_or(Rights::NONE);
+            let _ = write!(
+                out,
+                "cap: table={table_index} slot={slot} object={} rights=",
+                object.0
+            );
+            for (right, letter) in [
+                (Rights::READ, 'R'),
+                (Rights::WRITE, 'W'),
+                (Rights::GRANT, 'G'),
+            ] {
+                let _ = write!(out, "{}", if rights.contains(right) { letter } else { '-' });
+            }
+            let _ = write!(out, " parent=");
+            match table.parent_at(slot) {
+                Some(parent) => {
+                    let _ = write!(out, "{}", parent.index());
+                }
+                None => {
+                    let _ = write!(out, "-");
+                }
+            }
+            let _ = write!(out, " origin=");
+            match table.origin_at(slot) {
+                Some(origin) => {
+                    let _ = write!(out, "{}.{}", origin.table, origin.handle.index());
+                }
+                None => {
+                    let _ = write!(out, "-");
+                }
+            }
+            let _ = writeln!(out);
+        }
+    }
+    let _ = writeln!(out, "caps: end");
+}
+
+/// Checks that failed calls return distinct negated errno values, for three
+/// different causes: a handle that was never valid, an unknown call number, and
+/// a bad argument.
+fn errno_self_test() -> bool {
+    syscall_dispatch(SYS_MAP, 0xdead_beef, 0, 0) == SysError::BadHandle.code()
+        && syscall_dispatch(999, 0, 0, 0) == SysError::NoSys.code()
+        && syscall_dispatch(SYS_MEM_CREATE, 0, 0, 0) == SysError::Invalid.code()
+        && SysError::BadHandle.code() != SysError::NoSys.code()
+        && is_error(SysError::NoSys.code())
+        && !is_error(0)
 }
 
 /// Reads the loader's memory map and builds the frame allocator from it. Checks
@@ -1377,7 +1659,7 @@ fn fail(message: &str) -> ! {
 fn server() -> ! {
     interrupts::enable();
     let [request_recv, reply_send] = server_handles();
-    let request = ipc_recv(request_recv).unwrap_or_else(|e| fail(e));
+    let request = ipc_recv(request_recv).unwrap_or_else(|e| fail(e.as_str()));
     let mut out = serial::Writer;
     let _ = writeln!(
         out,
@@ -1385,7 +1667,7 @@ fn server() -> ! {
         request[0], request[1], request[2], request[3]
     );
     let sum: u64 = request.iter().sum();
-    ipc_send(reply_send, [sum, 0, 0, 0]).unwrap_or_else(|e| fail(e));
+    ipc_send(reply_send, [sum, 0, 0, 0]).unwrap_or_else(|e| fail(e.as_str()));
     finish()
 }
 
@@ -1436,6 +1718,47 @@ extern "C" fn user_thread_entry() -> ! {
     user_thread()
 }
 
+/// Ring-3 exception handler. The faulting thread is ended, and the kernel goes
+/// on running the other threads. The kernel itself still stops on its own faults.
+fn user_fault(vector: u64, rip: u64, error: u64) -> ! {
+    let mut out = serial::Writer;
+    let _ = writeln!(
+        out,
+        "user: fault vector {vector} at rip {rip:#x} error {error:#x}"
+    );
+    release_handles();
+    finish()
+}
+
+/// A user program that reads address 0, which no user mapping covers. The read
+/// faults in ring 3. The `ud2` after it is not reached; if it were, it would
+/// fault too, with another vector, and the smoke test would notice.
+#[unsafe(naked)]
+#[unsafe(link_section = ".user")]
+extern "C" fn fault_program() -> ! {
+    naked_asm!("xor eax, eax", "mov rax, [rax]", "ud2")
+}
+
+/// Enters ring 3 at [`fault_program`], to be killed by the user fault handler.
+fn fault_thread() -> ! {
+    let stack_top = core::ptr::addr_of_mut!(USER_STACK) as u64 + 4096;
+    // SAFETY: the entry is in the mapped user code pages, the stack is the user
+    // stack page, and the scheduler has installed this thread's kernel stack.
+    unsafe {
+        syscall::enter_user(
+            fault_program as *const () as usize as u64,
+            stack_top,
+            0,
+            0,
+            0,
+        )
+    }
+}
+
+extern "C" fn fault_thread_entry() -> ! {
+    fault_thread()
+}
+
 extern "C" fn process0_entry() -> ! {
     process(0)
 }
@@ -1468,8 +1791,8 @@ extern "C" fn shm_sender() -> ! {
         "mov edx, 1",
         "mov eax, {grant}",
         "syscall",
-        "cmp rax, -1",
-        "je 9f",
+        "cmp rax, -4096",
+        "ja 9f",
         "mov qword ptr [r14], rax",
         "mov rdi, r13",
         "mov rsi, r14",
@@ -1568,6 +1891,7 @@ fn grant_shared_memory(
         (*addr_of_mut!(MEM_OBJECTS))[0] = Some(MemObject {
             pages: [addr_of_mut!(SHARED_FRAME) as u64, 0, 0, 0],
             count: 1,
+            mapped: false,
         });
         let memory = tables[0]
             .mint(MEMORY_OBJECT, Rights::ALL)
@@ -1627,15 +1951,15 @@ extern "C" fn root_program() -> ! {
         "mov edx, 1",
         "mov eax, {spawn}",
         "syscall",
-        "cmp rax, -1",
-        "je 9f",
+        "cmp rax, -4096",
+        "ja 9f",
         // A two-page memory object, mapped at the window, with 0x5a written to
         // its second page. Its capability goes to the child with the message.
         "mov edi, 2",
         "mov eax, {mem_create}",
         "syscall",
-        "cmp rax, -1",
-        "je 9f",
+        "cmp rax, -4096",
+        "ja 9f",
         "mov r15, rax",
         "mov rdi, r15",
         "mov rsi, {window}",
@@ -1652,8 +1976,8 @@ extern "C" fn root_program() -> ! {
         "mov rdx, r15",
         "mov eax, {send_cap}",
         "syscall",
-        "cmp rax, -1",
-        "je 9f",
+        "cmp rax, -4096",
+        "ja 9f",
         // A bulk message: word 0 of the message is the payload's length. The
         // payload descriptor (address, length) is pushed so that rsp points at it.
         "mov qword ptr [r14], 16",
@@ -1665,8 +1989,8 @@ extern "C" fn root_program() -> ! {
         "mov rdx, rsp",
         "mov eax, {send_bulk}",
         "syscall",
-        "cmp rax, -1",
-        "je 9f",
+        "cmp rax, -4096",
+        "ja 9f",
         // The image descriptor, pushed so that rsp points at it: the image
         // address, its length, the handle, and the rights (READ).
         "push 1",
@@ -1677,8 +2001,8 @@ extern "C" fn root_program() -> ! {
         "mov rdi, rsp",
         "mov eax, {spawn_image}",
         "syscall",
-        "cmp rax, -1",
-        "je 9f",
+        "cmp rax, -4096",
+        "ja 9f",
         // Exit with the value read back from the object's second page.
         "mov rcx, {second_page}",
         "mov rdi, qword ptr [rcx]",
@@ -1802,10 +2126,10 @@ extern "C" fn spawned_1() -> ! {
 /// of the boot space), and gives it a read-only copy of `handle` from the caller.
 /// The child starts at its program's entry, and gets the copy as its first
 /// argument. Returns the child's thread slot.
-fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, &'static str> {
-    let rights = Rights::from_bits(rights).ok_or("bad rights")?;
+fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, SysError> {
+    let rights = Rights::from_bits(rights).ok_or(SysError::Invalid)?;
     if program != 0 {
-        return Err("no such program");
+        return Err(SysError::Invalid);
     }
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
@@ -1815,16 +2139,12 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, &'stat
             let index = (*addr_of_mut!(SPAWN_USED))
                 .iter()
                 .position(|used| !used)
-                .ok_or("no free spawn stack")?;
+                .ok_or(SysError::Full)?;
             let tables = (*addr_of_mut!(KERNEL_TABLES))
                 .as_mut()
-                .ok_or("no kernel tables")?;
-            tables
-                .select(0)
-                .map_err(|_| "cannot select the boot space")?;
-            let root = tables
-                .fork()
-                .map_err(|_| "cannot fork a space for the child")?;
+                .ok_or(SysError::NoMemory)?;
+            tables.select(0).map_err(|_| SysError::NoMemory)?;
+            let root = tables.fork().map_err(|_| SysError::NoMemory)?;
             let cr3 = tables.root_address_of(root);
             (*addr_of_mut!(CHILD_ROOTS))[index] = (root, cr3);
 
@@ -1834,7 +2154,7 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, &'stat
             } else {
                 spawned_1 as *const () as usize as u64
             };
-            let slot = spawn_thread(stack, entry, cr3)?;
+            let slot = spawn_thread(stack, entry, cr3).map_err(|_| SysError::Full)?;
             (*addr_of_mut!(SPAWN_USED))[index] = true;
 
             let source = (*addr_of_mut!(CAP_TABLES))[me];
@@ -1845,7 +2165,7 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, &'stat
                 &mut (*addr_of_mut!(CAP_TABLES))[slot],
                 rights,
             )
-            .map_err(|_| "cannot grant the child its handle")?;
+            .map_err(SysError::from)?;
             (*addr_of_mut!(SPAWN_ENTRY))[index] = Some(UserEntry {
                 entry: child_program as *const () as usize as u64,
                 stack_top: user_stack_bounds().1,
@@ -1868,7 +2188,7 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, &'stat
 /// The kernel copies it into the slot's image page, maps that page at
 /// [`IMAGE_BASE`] in the child's own address space only, and starts the child
 /// there with the narrowed handle as its first argument. Returns the spawn slot.
-fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
+fn spawn_image(descriptor: u64) -> Result<usize, SysError> {
     let (code_start, code_end) = (
         core::ptr::addr_of!(__user_code_start) as u64,
         core::ptr::addr_of!(__user_code_end) as u64,
@@ -1878,7 +2198,7 @@ fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
         within(code_start, code_end, address, len) || within(stack_start, stack_end, address, len)
     };
     if !in_user_pages(descriptor, 32) {
-        return Err("descriptor is not in user memory");
+        return Err(SysError::Fault);
     }
     let mut words = [0u64; 4];
     for (index, word) in words.iter_mut().enumerate() {
@@ -1889,9 +2209,9 @@ fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
     }
     let [image, length, handle, rights_bits] = words;
     if length == 0 || length > IMAGE_MAX || !within(code_start, code_end, image, length) {
-        return Err("image is not in user code");
+        return Err(SysError::Fault);
     }
-    let rights = Rights::from_bits(rights_bits).ok_or("bad rights")?;
+    let rights = Rights::from_bits(rights_bits).ok_or(SysError::Invalid)?;
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
         // tables, the image pages and the spawn state.
@@ -1900,16 +2220,12 @@ fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
             let index = (*addr_of_mut!(SPAWN_USED))
                 .iter()
                 .position(|used| !used)
-                .ok_or("no free spawn stack")?;
+                .ok_or(SysError::Full)?;
             let tables = (*addr_of_mut!(KERNEL_TABLES))
                 .as_mut()
-                .ok_or("no kernel tables")?;
-            tables
-                .select(0)
-                .map_err(|_| "cannot select the boot space")?;
-            let root = tables
-                .fork()
-                .map_err(|_| "cannot fork a space for the child")?;
+                .ok_or(SysError::NoMemory)?;
+            tables.select(0).map_err(|_| SysError::NoMemory)?;
+            let root = tables.fork().map_err(|_| SysError::NoMemory)?;
             let cr3 = tables.root_address_of(root);
             (*addr_of_mut!(CHILD_ROOTS))[index] = (root, cr3);
 
@@ -1923,15 +2239,11 @@ fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
                 let byte = ((image + offset) as *const u8).read_volatile();
                 ((page + offset) as *mut u8).write_volatile(byte);
             }
-            tables
-                .select(root)
-                .map_err(|_| "cannot select the child space")?;
+            tables.select(root).map_err(|_| SysError::NoMemory)?;
             tables
                 .map_4k(IMAGE_BASE, page, USER)
-                .map_err(|_| "cannot map the program image")?;
-            tables
-                .select(0)
-                .map_err(|_| "cannot select the boot space")?;
+                .map_err(|_| SysError::NoMemory)?;
+            tables.select(0).map_err(|_| SysError::NoMemory)?;
 
             let stack = &mut (*addr_of_mut!(SPAWN_STACKS))[index].0;
             let entry = if index == 0 {
@@ -1939,7 +2251,7 @@ fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
             } else {
                 spawned_1 as *const () as usize as u64
             };
-            let slot = spawn_thread(stack, entry, cr3)?;
+            let slot = spawn_thread(stack, entry, cr3).map_err(|_| SysError::Full)?;
             (*addr_of_mut!(SPAWN_USED))[index] = true;
 
             let source = (*addr_of_mut!(CAP_TABLES))[me];
@@ -1950,7 +2262,7 @@ fn spawn_image(descriptor: u64) -> Result<usize, &'static str> {
                 &mut (*addr_of_mut!(CAP_TABLES))[slot],
                 rights,
             )
-            .map_err(|_| "cannot grant the child its handle")?;
+            .map_err(SysError::from)?;
             (*addr_of_mut!(SPAWN_ENTRY))[index] = Some(UserEntry {
                 entry: IMAGE_BASE,
                 stack_top: stack_end,
@@ -2076,6 +2388,7 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     }
     gdt::load();
     idt::load();
+    idt::set_user_fault_handler(user_fault);
     let boot_root = match setup_paging() {
         Ok(root) => root,
         Err(message) => fail(message),
@@ -2100,6 +2413,9 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     if let Err(message) = check_ioapic_rtc() {
         fail(message);
     }
+    // The check left interrupts on. The bootstrap thread sets up the demo with
+    // them off, so no demo thread runs before the final enable below.
+    interrupts::disable();
 
     let boot_top = core::ptr::addr_of_mut!(BOOT_STACK) as u64 + STACK_SIZE as u64;
     // SAFETY: the bootstrap thread is the only code touching these statics until
@@ -2218,6 +2534,14 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         boot_root,
     )
     .unwrap_or_else(|e| fail(e));
+    // A thread that faults in ring 3 is ended by the fault handler, not the kernel.
+    let fault_stack = unsafe { &mut (*addr_of_mut!(STACK_FAULT)).0 };
+    spawn_thread(
+        fault_stack,
+        fault_thread_entry as *const () as usize as u64,
+        boot_root,
+    )
+    .unwrap_or_else(|e| fail(e));
     // SAFETY: the bootstrap thread is the only code touching the table and the
     // entry before the threads run.
     let irq_cap = unsafe {
@@ -2272,6 +2596,18 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         fail("grant check failed");
     }
     serial::write_str("handles: grant attenuates rights\n");
+    if !errno_self_test() {
+        fail("error codes are wrong");
+    }
+    serial::write_str("errno: failures are negated errno values\n");
+    if !mem_free_self_test() {
+        fail("memory free check failed");
+    }
+    serial::write_str("mem: freed object returned its frames\n");
+    if !reclaim_self_test() {
+        fail("revoking the last handle did not reclaim the object");
+    }
+    serial::write_str("mem: revoking the last handle reclaimed the object\n");
 
     // SAFETY: as above; the user thread reads this when it first runs.
     unsafe {
@@ -2285,6 +2621,7 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         });
     }
 
+    dump_capabilities();
     interrupts::enable();
     while FINISHED.load(Ordering::Relaxed) < DEMO_THREADS {
         yield_now();
