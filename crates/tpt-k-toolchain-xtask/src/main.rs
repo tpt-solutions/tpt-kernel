@@ -19,8 +19,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tpt_k_toolchain::doctor::{Os, SIBLING_REPOS};
 use tpt_k_toolchain::runner::{self, BuildStep, ImagePlan, QemuRun, Serial};
@@ -228,9 +227,11 @@ fn qemu_smoke(root: &Path) -> Result<(), String> {
         ovmf_vars,
         esp: runner::esp_dir(&plan),
         serial: Serial::Stdio,
+        // Host time. The instruction counter is for `tpt-k-build replay`.
+        icount: false,
     };
     eprintln!("xtask: booting (timeout {timeout}s)");
-    let outcome = run_qemu(&launch, Duration::from_secs(timeout))?;
+    let outcome = runner::capture(&launch, Duration::from_secs(timeout))?;
     eprintln!("xtask: QEMU exit status {:?}", outcome.status);
     eprintln!(
         "--- serial output ---\n{}--- end serial output ---",
@@ -256,50 +257,6 @@ fn stage_esp(plan: &ImagePlan, out: &Path) -> Result<(), String> {
 
 /// Starts QEMU and waits for it. Returns its exit status, or fails after
 /// `timeout`, when QEMU is killed.
-/// The result of one QEMU run: its exit status and everything it wrote to stdout.
-struct QemuOutcome {
-    status: Option<i32>,
-    transcript: String,
-}
-
-/// Starts QEMU with its serial port on standard output, and waits for it.
-///
-/// The transcript is read from the pipe, not from a file. Writing the serial port
-/// to a file dropped kernel output on this host, so the smoke test checked an
-/// incomplete transcript. The pipe carries every byte the kernel sends. Fails
-/// after `timeout`, when QEMU is killed.
-fn run_qemu(launch: &QemuRun, timeout: Duration) -> Result<QemuOutcome, String> {
-    let mut child = Command::new(&launch.qemu)
-        .args(runner::qemu_args(launch))
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("cannot start QEMU: {e}"))?;
-    let mut stdout = child.stdout.take().ok_or("no QEMU stdout")?;
-    let reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let _ = std::io::Read::read_to_end(&mut stdout, &mut bytes);
-        bytes
-    });
-    let started = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            break status.code();
-        }
-        if started.elapsed() > timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("QEMU did not finish within {}s", timeout.as_secs()));
-        }
-        thread::sleep(Duration::from_millis(100));
-    };
-    let bytes = reader.join().unwrap_or_default();
-    Ok(QemuOutcome {
-        status,
-        transcript: String::from_utf8_lossy(&bytes).replace('\r', ""),
-    })
-}
-
 /// Checks the QEMU status and the serial transcript, as `scripts/qemu-smoke.sh`
 /// did. Returns the first check that fails.
 fn check_serial(status: Option<i32>, serial: &str) -> Result<(), String> {
