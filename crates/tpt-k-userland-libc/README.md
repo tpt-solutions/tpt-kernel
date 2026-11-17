@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: allocation-free memory and string functions over byte slices, `strtol`-style parsing, a `printf` subset for integers into a caller buffer, errno values, and path normalisation. No `extern "C"` surface, no `tpt-k-ipc` mapping and no kernel calls yet.
 
 ## License
 
