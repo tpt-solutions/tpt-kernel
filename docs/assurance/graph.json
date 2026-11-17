@@ -338,6 +338,19 @@
           "name": "token_under_another_key_is_denied"
         }
       ]
+    },
+    {
+      "id": "MAN-1",
+      "layer": "tpt-k-root-manifest",
+      "critical": false,
+      "statement": "A capability granted from a policy manifest never carries a right the object's declared ceiling does not allow, and it carries exactly the rights the manifest asks for.",
+      "evidence": [
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-root-manifest/src/lib.rs",
+          "name": "property_grants_never_exceed_the_ceiling"
+        }
+      ]
     }
   ]
 }

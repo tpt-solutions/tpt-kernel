@@ -1,0 +1,16 @@
+# A sample application manifest. Run:
+#   cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- lint-manifest --manifest crates/tpt-k-root-manifest/examples/shell.toml
+
+[objects.console]
+rights = ["read", "write"]
+
+[objects.config]
+rights = ["read", "write", "grant"]
+
+[[process]]
+name = "shell"
+grants = [ { object = "console", rights = ["read", "write"] } ]
+
+[[process]]
+name = "loader"
+grants = [ { object = "config", rights = ["read", "grant"] } ]

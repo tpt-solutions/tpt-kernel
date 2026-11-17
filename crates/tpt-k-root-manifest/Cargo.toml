@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-root-manifest"
+version = "0.0.0"
+description = "tpt-k policy as a manifest: compiles a TOML app manifest into the capability grants a process receives, and lints over-broad grants."
+readme = "README.md"
+keywords = ["capability", "manifest", "policy", "tpt-k", "least-privilege"]
+categories = ["os", "config"]
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+tpt-k-kernel-ipc = { path = "../tpt-k-kernel-ipc" }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
