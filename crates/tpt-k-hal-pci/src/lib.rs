@@ -147,6 +147,85 @@ where
     }
 }
 
+/// Set of bus numbers, held in a fixed 256-bit bitmap.
+struct BusSet([u64; 4]);
+
+impl BusSet {
+    const fn new() -> Self {
+        Self([0; 4])
+    }
+
+    fn contains(&self, bus: u8) -> bool {
+        self.0[(bus / 64) as usize] & (1u64 << (bus % 64)) != 0
+    }
+
+    /// Adds `bus` and returns true if it was not already present.
+    fn insert(&mut self, bus: u8) -> bool {
+        let fresh = !self.contains(bus);
+        self.0[(bus / 64) as usize] |= 1u64 << (bus % 64);
+        fresh
+    }
+}
+
+/// Visits every present function reachable from `root_bus`, following
+/// PCI-to-PCI bridges (header type 1).
+///
+/// Bridges are followed with an explicit work stack, not recursion. Each bus
+/// is scanned at most once, tracked in a fixed bitmap, so a bridge whose
+/// secondary bus is its own bus, or a loop of bridges, cannot run forever.
+/// `max_depth` caps how many bridges deep the walk goes: 0 scans only
+/// `root_bus`, and 1 also scans the buses behind bridges on it. A bridge with
+/// `secondary > subordinate` contributes no buses.
+pub fn enumerate_tree<A, F>(access: &mut A, root_bus: u8, max_depth: u8, mut visit: F)
+where
+    A: ConfigAccess,
+    F: FnMut(Function),
+{
+    let mut visited = BusSet::new();
+    // Every bus is pushed at most once, so 256 slots are enough.
+    let mut stack = [(0u8, 0u8); 256];
+    let mut len = 0usize;
+    visited.insert(root_bus);
+    stack[0] = (root_bus, 0);
+    len += 1;
+
+    while len > 0 {
+        len -= 1;
+        let (bus, depth) = stack[len];
+        for device in 0..32u8 {
+            let mut multi = false;
+            for function in 0..8u8 {
+                if function > 0 && !multi {
+                    break;
+                }
+                let Some(bdf) = Bdf::new(bus, device, function) else {
+                    continue;
+                };
+                let Some(f) = read_function(access, bdf) else {
+                    continue;
+                };
+                if function == 0 {
+                    multi = f.multi_function;
+                }
+                visit(f);
+                if f.header_type == 1 && depth < max_depth {
+                    let bus_numbers = access.read32(bdf, 0x18);
+                    let secondary = (bus_numbers >> 8) as u8;
+                    let subordinate = (bus_numbers >> 16) as u8;
+                    if secondary <= subordinate {
+                        for child in secondary..=subordinate {
+                            if visited.insert(child) {
+                                stack[len] = (child, depth + 1);
+                                len += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Address space a BAR maps into.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarKind {
@@ -422,6 +501,59 @@ mod tests {
                 (bdf(0, 3, 2), 0x8086, 0x01),
             ]
         );
+    }
+
+    /// A PCI-to-PCI bridge's config dword 0x18: primary 0, secondary, subordinate.
+    fn bridge(id: u32, secondary: u8, subordinate: u8) -> Dev {
+        let mut d = Dev::new(id, 0x0604_0000, 0x0001_0000);
+        d.regs[6] = ((secondary as u32) << 8) | ((subordinate as u32) << 16);
+        d
+    }
+
+    #[test]
+    fn enumerate_tree_follows_bridges_to_leaf_buses() {
+        let mut fake = Fake::default();
+        fake.devs.insert(bdf(0, 1, 0), bridge(0x0001_8086, 1, 1));
+        fake.devs.insert(bdf(1, 0, 0), bridge(0x0002_8086, 2, 2));
+        fake.devs
+            .insert(bdf(2, 0, 0), Dev::new(0x1234_5678, 0x0200_0000, 0));
+        let mut seen = Vec::new();
+        enumerate_tree(&mut fake, 0, 8, |f| seen.push(f.bdf));
+        assert_eq!(seen, [bdf(0, 1, 0), bdf(1, 0, 0), bdf(2, 0, 0)]);
+    }
+
+    #[test]
+    fn enumerate_tree_does_not_loop_on_self_secondary() {
+        let mut fake = Fake::default();
+        // Secondary equals the bridge's own bus, and it claims bus 0 again.
+        fake.devs.insert(bdf(0, 1, 0), bridge(0x0001_8086, 0, 0));
+        fake.devs
+            .insert(bdf(0, 2, 0), Dev::new(0x0002_8086, 0x0200_0000, 0));
+        let mut seen = Vec::new();
+        enumerate_tree(&mut fake, 0, 255, |f| seen.push(f.bdf));
+        assert_eq!(seen, [bdf(0, 1, 0), bdf(0, 2, 0)]);
+    }
+
+    #[test]
+    fn enumerate_tree_depth_zero_scans_only_the_root_bus() {
+        let mut fake = Fake::default();
+        fake.devs.insert(bdf(0, 1, 0), bridge(0x0001_8086, 1, 1));
+        fake.devs
+            .insert(bdf(1, 0, 0), Dev::new(0x0002_8086, 0x0200_0000, 0));
+        let mut seen = Vec::new();
+        enumerate_tree(&mut fake, 0, 0, |f| seen.push(f.bdf));
+        assert_eq!(seen, [bdf(0, 1, 0)]);
+    }
+
+    #[test]
+    fn enumerate_tree_skips_bridge_with_secondary_above_subordinate() {
+        let mut fake = Fake::default();
+        fake.devs.insert(bdf(0, 1, 0), bridge(0x0001_8086, 3, 2));
+        fake.devs
+            .insert(bdf(3, 0, 0), Dev::new(0x0002_8086, 0x0200_0000, 0));
+        let mut seen = Vec::new();
+        enumerate_tree(&mut fake, 0, 8, |f| seen.push(f.bdf));
+        assert_eq!(seen, [bdf(0, 1, 0)]);
     }
 
     #[test]

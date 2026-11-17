@@ -12,6 +12,30 @@ pub mod bootmap;
 /// Size of a page frame in bytes.
 pub const FRAME_SIZE: u64 = 4096;
 
+/// Why [`clear_frame`] refused a buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClearError {
+    /// The buffer is not exactly one frame (`FRAME_SIZE` bytes) long.
+    WrongLength,
+}
+
+/// Zeroes one page frame before the frame is handed to another owner.
+///
+/// This is the scalar path: the slice is filled with `0`, which the compiler
+/// lowers to a plain store loop or a `memset`. Acceleration with `tpt-simd`
+/// (AVX2 or NEON, with this scalar path as the fallback) is deferred until the
+/// Phase 6 and Phase 9 optimisation work.
+///
+/// Returns `WrongLength` unless `frame` is exactly `FRAME_SIZE` bytes, and
+/// leaves the buffer untouched in that case.
+pub fn clear_frame(frame: &mut [u8]) -> Result<(), ClearError> {
+    if frame.len() != FRAME_SIZE as usize {
+        return Err(ClearError::WrongLength);
+    }
+    frame.fill(0);
+    Ok(())
+}
+
 /// Frames tracked per bitmap word.
 const BITS: usize = u64::BITS as usize;
 
@@ -188,6 +212,25 @@ impl<'a> FrameAllocator<'a> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn clear_frame_zeroes_a_dirty_page() {
+        let mut page = [0xABu8; FRAME_SIZE as usize];
+        assert_eq!(clear_frame(&mut page), Ok(()));
+        assert!(page.iter().all(|b| *b == 0));
+    }
+
+    #[test]
+    fn clear_frame_refuses_wrong_lengths_and_leaves_them_alone() {
+        let mut short = [0x5Au8; 4095];
+        assert_eq!(clear_frame(&mut short), Err(ClearError::WrongLength));
+        assert!(short.iter().all(|b| *b == 0x5A));
+        let mut long = [0x5Au8; 4097];
+        assert_eq!(clear_frame(&mut long), Err(ClearError::WrongLength));
+        assert!(long.iter().all(|b| *b == 0x5A));
+        let mut empty: [u8; 0] = [];
+        assert_eq!(clear_frame(&mut empty), Err(ClearError::WrongLength));
+    }
+
     use super::*;
 
     #[test]
