@@ -79,6 +79,7 @@ Rules that apply to every task:
 - [x] Configure `tpt-semadiff` as default git difftool
 - [x] Confirm `tpt-cargo-vitals` runs locally and in <100ms (2026-11-16: the <100 ms parse+graph budget is met at ~1.5 ms; the ~8 s end-to-end time is seven `cargo metadata` runs, one per platform target, by design. Accepted for CI; a host-only flag is optional future work in tpt-cargo-vitals)
 - [ ] Verify existing TPT deps build `no_std` and are reachable via git/path: `tpt-primitives`, `tpt-simd`, `tpt-fabric`, `tpt-mcpbox`, `tpt-concord`, `tpt-filesystem`
+  - 2026-11-18: all `tpt-simd` library crates build for `x86_64-unknown-none` with no default features (the test helper needs std, as expected). Still open: `tpt-fabric`, `tpt-concord`, `tpt-filesystem`, `tpt-mcpbox`.
   - 2026-11-17: `tpt-primitives` builds `no_std` for `x86_64-unknown-none` through `tpt-k-ipc-cap`, and is consumed by path from the sibling repo. Still open: `tpt-simd`, `tpt-fabric`, `tpt-concord`, `tpt-filesystem`, `tpt-mcpbox`.
   - 2026-11-16: `tpt-primitives` now builds `no_std` (`x86_64-unknown-none`); its `ciborium` dependency is gone. Still open: `tpt-simd` (2 crates), `tpt-fabric` (12 std crates), `tpt-concord`, `tpt-filesystem` and `tpt-mcpbox` (std by design, not needed in the TCB).
 - [ ] Audit licenses of TPT deps and their transitive deps (incl. WASM runtime used by `tpt-mcpbox`)
@@ -121,12 +122,14 @@ those repo todos are done.
 
 - [ ] Define core IPC + capability invariants in `tpt-concord` (e.g., "capability check cannot be bypassed")
 - [ ] Property tests linked to each invariant
+  - 2026-11-18: deterministic property-style tests cover attenuation, key binding, token integrity, the root table's tree invariant, and the frame codec. They are not proptest, because its dependencies fail the license gate. A formal model is still open.
 - [ ] Fuzzing campaigns: syscall interface, IPC serde, ACPI/PCI/FDT/USB parsers
   - 2026-11-17: deterministic mutation tests cover the ACPI, PCI, FDT, USB and IPC serde parsers and the ELF planner, with no panics found. Coverage-guided fuzzing and the syscall interface are still open.
 - [ ] SMT/model-checking artifacts for capability + IPC invariants
 - [ ] Build Assurance Graph; link proofs/tests/fuzzing to kernel specs
 - [ ] CI gate fails when graph shows unproven critical claims
 - [ ] Wire `tpt-cargo-vitals` into daily local workflow (pre-commit/pre-push)
+  - 2026-11-18: `scripts/check.sh` runs fmt, clippy, tests and the license gate, and `.githooks/pre-push` runs it. Enable with `git config core.hooksPath .githooks`. There is no pre-commit hook yet.
 - [ ] Wire `tpt-semadiff` into review workflow for generated/refactored code
 - [ ] Report: what is proven vs unproven (published per release)
 
@@ -149,6 +152,7 @@ those repo todos are done.
 
 - [ ] Architecture docs and per-repo READMEs
 - [ ] Developer guide: build, run in QEMU, add a driver
+  - 2026-11-18: `docs/developer-guide.md` covers checks, building, the QEMU smoke test, writing a crate, capabilities and IPC, and the driver pieces. It says what is not built yet.
 - [ ] Versioning and release process for the tpt-kernel repo
 - [ ] Final license audit across all repos (CI-green with `tpt-cargo-vitals`)
 - [ ] Publish tpt-kernel / first tagged release
