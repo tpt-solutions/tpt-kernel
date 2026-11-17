@@ -369,6 +369,9 @@ version = "0.0.0"
 [[package]]
 name = "tpt-k-userland-fs-bridge"
 version = "0.0.0"
+dependencies = [
+ "tpt-k-ipc",
+]
 
 [[package]]
 name = "tpt-k-userland-libc"
