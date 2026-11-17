@@ -9,6 +9,7 @@
 #![no_std]
 
 pub mod context;
+pub mod priority;
 
 pub use context::{StackError, ENTRY_WORD, FRAME_WORDS};
 
