@@ -9,4 +9,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- `CapService`: the root's capability service over `tpt-k-ipc`. MINT, DELEGATE, REVOKE and ATTENUATE check signed tokens and rights before touching the table. Host-tested.
+- `main.rs` is still a placeholder with no kernel handoff.

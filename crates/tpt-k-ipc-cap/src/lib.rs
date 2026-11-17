@@ -35,8 +35,10 @@ impl Rights {
     pub const MAP: Self = Self(1 << 3);
     /// Revoke the capability and the copies made from it.
     pub const REVOKE: Self = Self(1 << 4);
+    /// Mint new root capabilities for objects, as the root server does.
+    pub const MINT: Self = Self(1 << 5);
     /// Every right this crate defines.
-    pub const ALL: Self = Self(0x1F);
+    pub const ALL: Self = Self(0x3F);
 
     /// Rights from raw bits. Bits this crate does not define are cleared.
     #[must_use]

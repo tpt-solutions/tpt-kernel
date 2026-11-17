@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-root"
 version = "0.0.0"
-description = "tpt-k root server: first user-space process and capability authority (scaffold)."
+description = "tpt-k root server: capability service over tpt-k-ipc. The kernel handoff is not built yet."
 readme = "README.md"
 keywords = ["root-server", "capability", "microkernel", "tpt-k", "init"]
 categories = ["os"]
@@ -12,3 +12,6 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+tpt-k-ipc = { path = "../tpt-k-ipc" }
+tpt-k-ipc-cap = { path = "../tpt-k-ipc-cap" }
+tpt-k-root-caps = { path = "../tpt-k-root-caps" }

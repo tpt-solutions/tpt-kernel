@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: a capability service (`CapService`) that handles MINT, DELEGATE, REVOKE and ATTENUATE requests as `tpt-k-ipc` requests, checking signed tokens and rights first. The kernel handoff and the process start-up are not built yet.
 
 ## License
 
