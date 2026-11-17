@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-ipc"
 version = "0.0.0"
-description = "tpt-k IPC client/server framework (scaffold)."
+description = "tpt-k IPC client/server framework."
 readme = "README.md"
 keywords = ["ipc", "microkernel", "tpt-k", "capability", "client-server"]
 categories = ["os", "concurrency"]
@@ -12,3 +12,5 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+tpt-k-ipc-cap = { path = "../tpt-k-ipc-cap" }
+tpt-k-ipc-serde = { path = "../tpt-k-ipc-serde" }

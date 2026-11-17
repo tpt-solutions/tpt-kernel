@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: Framed messages: a 16-byte header, 64-bit words and a payload, checked with CRC-32C. Words are read in place without copying. The checksum is scalar; the `tpt-simd` path is not used yet.
 
 ## License
 

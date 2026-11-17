@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-ipc-serde"
 version = "0.0.0"
-description = "tpt-k IPC serialization: zero-copy (de)serialization and checksumming (scaffold)."
+description = "tpt-k IPC serialization: zero-copy (de)serialization and checksumming."
 readme = "README.md"
 keywords = ["serialization", "zero-copy", "checksum", "ipc", "tpt-k"]
 categories = ["os", "no-std", "encoding"]

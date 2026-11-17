@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-ipc-cap"
 version = "0.0.0"
-description = "tpt-k IPC capabilities: tokens, rights, unforgeable handles (scaffold)."
+description = "tpt-k IPC capabilities: tokens, rights, unforgeable handles."
 readme = "README.md"
 keywords = ["capability", "ipc", "security", "tpt-k", "tokens"]
 categories = ["os", "no-std"]
@@ -12,3 +12,5 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+# SHA-256 for the token tag. Uses the no_std build with no default features.
+tpt-primitives = { path = "../../../tpt-primitives/crates/tpt-primitives", default-features = false }

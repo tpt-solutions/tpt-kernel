@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Rights, capability and handle types, and unforgeable tokens: an HMAC-SHA256 tag under a server key (SHA-256 from `tpt-primitives`), with verified attenuation. The `CapabilityId` and CBOR types of `tpt-primitives` are not used yet.

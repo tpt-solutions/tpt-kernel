@@ -12,13 +12,13 @@ Rules: `#![no_std]`, 100% Rust, no C/C++ bindings.
 
 ## Phase 2 — User-space IPC libraries
 
-- [ ] `tpt-k-ipc-cap`: capability tokens, rights, unforgeable handles (using `tpt-primitives` CapabilityId/CBOR/SHA-256)
-- [ ] `tpt-k-ipc-serde`: zero-copy (de)serialization + checksum (using `tpt-simd`)
-- [ ] `tpt-k-ipc`: client/server framework
+- [x] `tpt-k-ipc-cap`: capability tokens, rights, unforgeable handles (2026-11-17: HMAC-SHA256 tags under a server key, using the SHA-256 of `tpt-primitives`, checked against the RFC 4231 vector; verified attenuation. The `CapabilityId` and CBOR types are not used yet)
+- [x] `tpt-k-ipc-serde`: zero-copy (de)serialization + checksum (2026-11-17: framed words and payload, read in place, with CRC-32C checked against the standard value. The checksum is scalar; `tpt-simd` is not used yet)
+- [x] `tpt-k-ipc`: client/server framework (2026-11-17: capability-carrying requests and status replies; `serve` checks the token and rights before the service runs. There is no transport yet)
 
 ## Phase 4 — Storage
 
-- [ ] Block-device IPC protocol defined here, used by `tpt-k-drivers` and `tpt-k-userland`
+- [x] Block-device IPC protocol defined here, used by `tpt-k-drivers` and `tpt-k-userland` (2026-11-17: read, write, flush and get-info frames in the `block` module, with `serve_block` checking bounds before the device runs; not yet used by drivers or userland)
 
 ## Phase 6 — AArch64
 
