@@ -331,3 +331,6 @@ mod tests {
         assert_eq!(ep.receive(2), Err(EndpointError::Full));
     }
 }
+
+#[cfg(test)]
+mod invariants;

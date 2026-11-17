@@ -104,7 +104,7 @@ pub struct Origin {
     pub handle: CapId,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Slot {
     live: bool,
     generation: u32,
@@ -583,3 +583,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod invariants;
