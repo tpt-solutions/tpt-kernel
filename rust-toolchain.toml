@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Pins the toolchain for the workspace. `rustup show` (run by CI and by
+# qemu-smoke.yml) installs the components and targets listed here. The UEFI
+# loader and the bare-metal kernel are built for targets whose standard
+# library is not installed by default, so they must be listed.
+[toolchain]
+channel = "1.95.0"
+components = ["clippy", "rustfmt"]
+targets = ["x86_64-unknown-none", "x86_64-unknown-uefi"]

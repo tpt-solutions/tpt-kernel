@@ -45,6 +45,10 @@ jobs:
         run: git clone --depth 1 https://github.com/tpt-solutions/tpt-primitives.git "$GITHUB_WORKSPACE/../tpt-primitives"
       - name: Show pinned toolchain
         run: rustup show
+      # The bare-metal core library is needed to link the kernel. Install it
+      # explicitly so the build does not depend on rustup show having done so.
+      - name: Install bare-metal target
+        run: rustup target add x86_64-unknown-none
       - name: Build kernel image
         run: bash scripts/build-kernel.sh
 
