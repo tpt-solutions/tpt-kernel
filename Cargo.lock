@@ -339,6 +339,11 @@ version = "0.0.0"
 [[package]]
 name = "tpt-k-root"
 version = "0.0.0"
+dependencies = [
+ "tpt-k-ipc",
+ "tpt-k-ipc-cap",
+ "tpt-k-root-caps",
+]
 
 [[package]]
 name = "tpt-k-root-caps"
@@ -354,6 +359,9 @@ version = "0.0.0"
 [[package]]
 name = "tpt-k-toolchain"
 version = "0.0.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "tpt-k-toolchain-iso"
@@ -365,6 +373,9 @@ dependencies = [
 [[package]]
 name = "tpt-k-userland"
 version = "0.0.0"
+dependencies = [
+ "tpt-k-userland-shell",
+]
 
 [[package]]
 name = "tpt-k-userland-fs-bridge"

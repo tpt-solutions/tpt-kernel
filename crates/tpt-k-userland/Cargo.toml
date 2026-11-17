@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-userland"
 version = "0.0.0"
-description = "tpt-k userland meta-crate and interactive shell binary (scaffold)."
+description = "tpt-k shell REPL: builtins and job tracking. External programs are not run yet."
 readme = "README.md"
 keywords = ["shell", "userland", "tpt-k", "posix", "os"]
 categories = ["os", "command-line-utilities"]
@@ -12,3 +12,4 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+tpt-k-userland-shell = { path = "../tpt-k-userland-shell" }

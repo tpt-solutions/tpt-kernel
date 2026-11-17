@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+The shell REPL is built: it parses lines with `tpt-k-userland-shell`, runs the builtins `jobs`, `fg`, `bg`, `exit`, `true`, `false` and `echo`, and reads a script from standard input. External commands are reported as not supported yet, with status 127. Pipelines and redirections are refused with an error. Starting programs needs the process layer, which is not built.
 
 ## License
 
