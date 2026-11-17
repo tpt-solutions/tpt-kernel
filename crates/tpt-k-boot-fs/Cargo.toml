@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-boot-fs"
 version = "0.0.0"
-description = "tpt-k minimal read-only FAT32 driver for loading kernel and root images."
+description = "tpt-k minimal read-only FAT32 driver for loading kernel and root images, with 8.3 and ASCII long names."
 readme = "README.md"
 keywords = ["elf", "bootloader", "tpt-k", "uefi", "parser"]
 categories = ["os", "no-std", "parser-implementations"]

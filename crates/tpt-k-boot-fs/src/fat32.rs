@@ -3,8 +3,11 @@
 //! directory lookup, and whole-file reads into a caller buffer.
 //!
 //! The driver needs no heap. It reads through [`BlockRead`], one small
-//! field at a time, so it never holds a cluster in memory. Long file names
-//! (LFN entries) are skipped, so a file can be found only by its 8.3 name.
+//! field at a time, so it never holds a cluster in memory. A path component
+//! is matched by its 8.3 short name and by its long file name (LFN entries,
+//! ASCII only). A long name counts only when its LFN chain is complete and
+//! its checksum matches the short entry it precedes; otherwise the short
+//! name is the only match.
 
 use core::fmt;
 
@@ -22,6 +25,14 @@ const ATTR_LFN: u8 = 0x0F;
 const FIRST_DATA_CLUSTER: u32 = 2;
 /// Smallest cluster count that makes a volume FAT32 (Microsoft spec).
 const MIN_FAT32_CLUSTERS: u32 = 65_525;
+/// Longest long file name accepted, in bytes. All names are ASCII.
+pub const MAX_LONG_NAME: usize = 255;
+/// Most LFN entries in one chain: 255 characters at 13 per entry.
+const MAX_LFN_PARTS: u8 = 20;
+/// Byte offsets of the 13 UCS-2 characters inside an LFN entry.
+const LFN_OFFSETS: [usize; 13] = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30];
+/// Flag in an LFN sequence byte that marks the highest-numbered entry.
+const LFN_LAST: u8 = 0x40;
 
 /// Reads bytes at an absolute offset within the volume.
 pub trait BlockRead {
@@ -50,7 +61,7 @@ pub enum Fat32Error<E> {
     NotADirectory,
     /// The final path component is a directory.
     NotAFile,
-    /// The path cannot be a valid 8.3 name.
+    /// The name is empty, not ASCII, or longer than [`MAX_LONG_NAME`].
     BadName,
 }
 
@@ -64,7 +75,7 @@ impl<E: fmt::Debug> fmt::Display for Fat32Error<E> {
             Self::NotFound => write!(f, "not found"),
             Self::NotADirectory => write!(f, "not a directory"),
             Self::NotAFile => write!(f, "is a directory"),
-            Self::BadName => write!(f, "not an 8.3 name"),
+            Self::BadName => write!(f, "name is not ASCII or is too long"),
         }
     }
 }
@@ -215,7 +226,8 @@ impl<D: BlockRead> Fat32<D> {
     }
 
     /// Looks up `path` (components separated by `/`, leading slash optional)
-    /// and describes what it names. The empty path is the root directory.
+    /// and describes what it names. A component matches its 8.3 name or its
+    /// long name, ignoring ASCII case. The empty path is the root directory.
     pub fn lookup(&mut self, path: &str) -> Result<Entry, Fat32Error<D::Error>> {
         let mut current = Entry {
             is_dir: true,
@@ -226,9 +238,9 @@ impl<D: BlockRead> Fat32<D> {
             if !current.is_dir {
                 return Err(Fat32Error::NotADirectory);
             }
-            let name = name_83(component)?;
+            let want = Want::parse::<D::Error>(component)?;
             current = self
-                .find_in_dir(current.first_cluster, &name)?
+                .find_in_dir(current.first_cluster, &want)?
                 .ok_or(Fat32Error::NotFound)?;
         }
         Ok(current)
@@ -286,16 +298,18 @@ impl<D: BlockRead> Fat32<D> {
         Ok(Some(next))
     }
 
-    /// Searches a directory chain for a short name.
+    /// Searches a directory chain for `want`, by short name or by long name.
     fn find_in_dir(
         &mut self,
         dir_cluster: u32,
-        name: &[u8; 11],
+        want: &Want<'_>,
     ) -> Result<Option<Entry>, Fat32Error<D::Error>> {
         let entries_per_cluster = self.bpb.cluster_bytes() as usize / DIR_ENTRY;
         let mut cluster = dir_cluster;
         // A chain cannot be longer than the cluster count; more hops mean a loop.
         let mut hops = 0u32;
+        // LFN entries may cross clusters, so the chain lives across the loop.
+        let mut chain = LfnChain::new();
         loop {
             if !self.valid_cluster(cluster) {
                 return Err(Fat32Error::Corrupt);
@@ -308,13 +322,27 @@ impl<D: BlockRead> Fat32<D> {
                     .map_err(Fat32Error::Io)?;
                 match e[0] {
                     0x00 => return Ok(None),
-                    0xE5 => continue,
+                    0xE5 => {
+                        chain.reset();
+                        continue;
+                    }
                     _ => {}
                 }
-                if e[11] == ATTR_LFN || e[11] & ATTR_VOLUME_ID != 0 {
+                if e[11] == ATTR_LFN {
+                    chain.push(&e);
                     continue;
                 }
-                if e[0..11].eq_ignore_ascii_case(name) {
+                let mut short = [0u8; 11];
+                short.copy_from_slice(&e[0..11]);
+                let long_hit = chain.names(&short, want.long);
+                chain.reset();
+                if e[11] & ATTR_VOLUME_ID != 0 {
+                    continue;
+                }
+                let short_hit = want
+                    .short
+                    .is_some_and(|n| short[..].eq_ignore_ascii_case(&n[..]));
+                if long_hit || short_hit {
                     let hi = u16::from_le_bytes([e[20], e[21]]) as u32;
                     let lo = u16::from_le_bytes([e[26], e[27]]) as u32;
                     return Ok(Some(Entry {
@@ -339,7 +367,8 @@ impl<D: BlockRead> Fat32<D> {
 /// Converts one path component to the 11-byte space-padded 8.3 form.
 ///
 /// Names are upper-cased. `..` is accepted as the parent entry name. Anything
-/// that does not fit 8.3 is refused, because the LFN form is not read.
+/// that does not fit 8.3 is refused here; [`Fat32::lookup`] still tries such
+/// a name against long names.
 pub fn name_83<E>(component: &str) -> Result<[u8; 11], Fat32Error<E>> {
     let mut out = [b' '; 11];
     if component == ".." {
@@ -369,6 +398,117 @@ fn valid_83_char<E>(b: u8) -> Result<u8, Fat32Error<E>> {
         Ok(b.to_ascii_uppercase())
     } else {
         Err(Fat32Error::BadName)
+    }
+}
+
+/// A path component as the directory search sees it: its 8.3 form, when it
+/// has one, and the text to match against long names.
+#[derive(Debug, Clone, Copy)]
+struct Want<'a> {
+    short: Option<[u8; 11]>,
+    long: &'a str,
+}
+
+impl<'a> Want<'a> {
+    fn parse<E>(component: &'a str) -> Result<Self, Fat32Error<E>> {
+        if component.is_empty() || component.len() > MAX_LONG_NAME || !component.is_ascii() {
+            return Err(Fat32Error::BadName);
+        }
+        Ok(Self {
+            short: name_83::<E>(component).ok(),
+            long: component,
+        })
+    }
+}
+
+/// The checksum of a short name, as LFN entries record it (the rotate-and-add
+/// sum from the FAT specification).
+fn short_checksum(name: &[u8; 11]) -> u8 {
+    name.iter().fold(0u8, |sum, &c| {
+        let rotated: u8 = if sum & 1 != 0 { 0x80 } else { 0 };
+        rotated.wrapping_add(sum >> 1).wrapping_add(c)
+    })
+}
+
+/// The LFN entries seen since the last short entry, held in a fixed buffer.
+///
+/// Entries arrive highest sequence number first, with the last-entry flag on
+/// the first. The chain is complete when sequence 1 has been read.
+struct LfnChain {
+    /// True while the entries so far form a chain that began with the flag.
+    active: bool,
+    /// Number of entries the chain has.
+    count: u8,
+    /// Sequence number the next entry must carry. Zero once complete.
+    next: u8,
+    /// Short-name checksum recorded on every entry of the chain.
+    checksum: u8,
+    /// The 13 UCS-2 characters of each entry, in name order.
+    units: [u16; MAX_LFN_PARTS as usize * 13],
+}
+
+impl LfnChain {
+    fn new() -> Self {
+        Self {
+            active: false,
+            count: 0,
+            next: 0,
+            checksum: 0,
+            units: [0; MAX_LFN_PARTS as usize * 13],
+        }
+    }
+
+    fn reset(&mut self) {
+        self.active = false;
+        self.count = 0;
+        self.next = 0;
+    }
+
+    /// Adds one LFN entry. Anything out of order ends the chain.
+    fn push(&mut self, e: &[u8; DIR_ENTRY]) {
+        let seq = e[0] & 0x1F;
+        if e[0] & LFN_LAST != 0 {
+            self.reset();
+            if seq == 0 || seq > MAX_LFN_PARTS {
+                return;
+            }
+            self.active = true;
+            self.count = seq;
+            self.next = seq;
+            self.checksum = e[13];
+        }
+        if !self.active || seq == 0 || seq != self.next || e[13] != self.checksum {
+            self.reset();
+            return;
+        }
+        let base = (seq as usize - 1) * 13;
+        for (i, off) in LFN_OFFSETS.iter().enumerate() {
+            self.units[base + i] = u16::from_le_bytes([e[*off], e[*off + 1]]);
+        }
+        self.next -= 1;
+    }
+
+    /// True if the chain is complete and belongs to the short entry `short`,
+    /// and it spells `long` ignoring ASCII case. A chain with a non-ASCII
+    /// character, a misplaced terminator, or a wrong checksum never matches.
+    fn names(&self, short: &[u8; 11], long: &str) -> bool {
+        if !self.active || self.next != 0 || self.checksum != short_checksum(short) {
+            return false;
+        }
+        let total = self.count as usize * 13;
+        let raw = &self.units[..total];
+        let len = raw.iter().position(|&u| u == 0).unwrap_or(total);
+        if len == 0 || len != long.len() {
+            return false;
+        }
+        // After the terminator, the rest of the chain is 0xFFFF padding only.
+        if len < total && !raw[len + 1..].iter().all(|&u| u == 0xFFFF) {
+            return false;
+        }
+        raw[..len]
+            .iter()
+            .zip(long.bytes())
+            .all(|(&u, b)| u != 0 && u <= 0x7F && (u as u8).eq_ignore_ascii_case(&b))
     }
 }
 
@@ -576,10 +716,11 @@ mod tests {
     }
 
     #[test]
-    fn long_names_are_refused_not_guessed() {
+    fn long_name_without_a_matching_chain_is_not_found() {
         let mut fs = mount();
-        // The LFN entry is skipped, so a long name cannot be matched.
-        assert_eq!(fs.lookup("hello text file.txt"), Err(Fat32Error::BadName));
+        // The LFN entry in this image is not a valid chain for HELLO.TXT,
+        // so the long name matches nothing.
+        assert_eq!(fs.lookup("hello text file.txt"), Err(Fat32Error::NotFound));
     }
 
     #[test]
@@ -661,6 +802,172 @@ mod tests {
             refuse(&|d| d[32..36].copy_from_slice(&20_000u32.to_le_bytes())),
             Fat32Error::NotFat32
         );
+    }
+
+    /// Builds the LFN entries for `name`, for the short entry `short`, in
+    /// the order a directory stores them: highest sequence number first.
+    fn lfn_entries(name: &str, short: &[u8; 11]) -> Vec<[u8; 32]> {
+        let mut units: Vec<u16> = name.bytes().map(u16::from).collect();
+        if !units.len().is_multiple_of(13) {
+            units.push(0x0000);
+        }
+        while !units.len().is_multiple_of(13) {
+            units.push(0xFFFF);
+        }
+        let parts = units.len() / 13;
+        let sum = short_checksum(short);
+        let mut out = Vec::new();
+        for k in (1..=parts).rev() {
+            let mut e = [0u8; 32];
+            e[0] = k as u8 | if k == parts { LFN_LAST } else { 0 };
+            for (i, off) in LFN_OFFSETS.iter().enumerate() {
+                let u = units[(k - 1) * 13 + i].to_le_bytes();
+                e[*off] = u[0];
+                e[*off + 1] = u[1];
+            }
+            e[11] = ATTR_LFN;
+            e[13] = sum;
+            out.push(e);
+        }
+        out
+    }
+
+    /// A volume whose root directory spills into a second cluster, holding
+    /// several long names. One chain crosses the cluster boundary.
+    fn lfn_image() -> Vec<u8> {
+        let mut d = image();
+        // Root: cluster 2 continues in cluster 19.
+        set_fat(&mut d, 2, 19);
+        set_fat(&mut d, 19, EOC);
+
+        let mut root: Vec<[u8; 32]> = Vec::new();
+
+        // A two-part name's file: kernel-image.elf, cluster 14.
+        root.extend(lfn_entries("kernel-image.elf", b"KERNEL~1ELF"));
+        root.push(dirent(b"KERNEL~1ELF", 0x20, 14, 6));
+        set_fat(&mut d, 14, EOC);
+        put(&mut d, 14, 0, b"kernel");
+
+        // Checksum on every entry is wrong, so only the short name matches.
+        let mut bad = lfn_entries("bad-name-file.bin", b"BADNAM~1BIN");
+        for e in &mut bad {
+            e[13] ^= 0xFF;
+        }
+        root.extend(bad);
+        root.push(dirent(b"BADNAM~1BIN", 0x20, 15, 3));
+        set_fat(&mut d, 15, EOC);
+        put(&mut d, 15, 0, b"bad");
+
+        // A three-part name, cluster 17. Its short entry is the sixteenth root
+        // slot overall, so the chain's last entry is in the first root cluster
+        // and its short entry in the second.
+        root.extend(lfn_entries("three-part-long-name-file.dat", b"THREEP~1DAT"));
+        root.push(dirent(b"THREEP~1DAT", 0x20, 17, 5));
+        set_fat(&mut d, 17, EOC);
+        put(&mut d, 17, 0, b"three");
+
+        // Exactly 13 characters: no terminator and no padding.
+        root.extend(lfn_entries("exactly13char", b"EXACTL~1   "));
+        root.push(dirent(b"EXACTL~1   ", 0x20, 18, 4));
+        set_fat(&mut d, 18, EOC);
+        put(&mut d, 18, 0, b"exac");
+
+        // An orphan chain with no short entry after it; the directory ends.
+        root.extend(lfn_entries("orphan-entry.txt", b"ORPHAN~1TXT"));
+
+        // The image's own seven entries occupy slots 0 to 6 of cluster 2.
+        for (i, e) in root.iter().enumerate() {
+            let slot = i + 7;
+            let (cluster, index) = if slot < 16 {
+                (2, slot)
+            } else {
+                (19, slot - 16)
+            };
+            put(&mut d, cluster, index * 32, e);
+        }
+        d
+    }
+
+    fn mount_lfn() -> Fat32<MemDisk> {
+        Fat32::mount(MemDisk(lfn_image())).unwrap()
+    }
+
+    #[test]
+    fn finds_a_file_by_its_long_name_and_reads_it() {
+        let mut fs = mount_lfn();
+        let mut out = [0u8; 16];
+        let n = fs.read_file("kernel-image.elf", &mut out).unwrap();
+        assert_eq!(&out[..n], b"kernel");
+    }
+
+    #[test]
+    fn long_name_lookup_ignores_case() {
+        let mut fs = mount_lfn();
+        let entry = fs.lookup("KERNEL-Image.ELF").unwrap();
+        assert_eq!(entry.first_cluster, 14);
+        assert_eq!(entry.size, 6);
+    }
+
+    #[test]
+    fn short_alias_still_finds_the_same_file() {
+        let mut fs = mount_lfn();
+        assert_eq!(fs.lookup("KERNEL~1.ELF").unwrap().first_cluster, 14);
+    }
+
+    #[test]
+    fn three_part_long_name_is_found() {
+        let mut fs = mount_lfn();
+        let entry = fs.lookup("three-part-long-name-file.dat").unwrap();
+        assert_eq!(entry.first_cluster, 17);
+        assert_eq!(entry.size, 5);
+    }
+
+    #[test]
+    fn long_name_of_exactly_thirteen_characters_is_found() {
+        let mut fs = mount_lfn();
+        assert_eq!(fs.lookup("exactly13char").unwrap().first_cluster, 18);
+    }
+
+    #[test]
+    fn a_bad_checksum_on_the_lfn_chain_falls_back_to_the_short_name() {
+        let mut fs = mount_lfn();
+        assert_eq!(fs.lookup("bad-name-file.bin"), Err(Fat32Error::NotFound));
+        assert_eq!(fs.lookup("BADNAM~1.BIN").unwrap().first_cluster, 15);
+    }
+
+    #[test]
+    fn an_orphan_lfn_chain_with_no_short_entry_is_ignored() {
+        let mut fs = mount_lfn();
+        assert_eq!(fs.lookup("orphan-entry.txt"), Err(Fat32Error::NotFound));
+    }
+
+    #[test]
+    fn a_prefix_of_a_long_name_does_not_match() {
+        let mut fs = mount_lfn();
+        assert_eq!(fs.lookup("kernel-image.el"), Err(Fat32Error::NotFound));
+        assert_eq!(fs.lookup("kernel-image.elff"), Err(Fat32Error::NotFound));
+    }
+
+    #[test]
+    fn non_ascii_and_overlong_names_are_refused() {
+        let mut fs = mount_lfn();
+        assert_eq!(fs.lookup("caf\u{e9}.txt"), Err(Fat32Error::BadName));
+        let long = [b'a'; 256];
+        let long = core::str::from_utf8(&long).unwrap();
+        assert_eq!(fs.lookup(long), Err(Fat32Error::BadName));
+    }
+
+    #[test]
+    fn a_long_name_chain_with_a_non_ascii_character_does_not_match() {
+        let mut d = lfn_image();
+        // Root slot 7 is the first entry of the kernel-image.elf chain. Change
+        // its first character to U+00E9.
+        let at = cluster_at(2) + 7 * 32;
+        d[at + 1] = 0xE9;
+        d[at + 2] = 0x00;
+        let mut fs = Fat32::mount(MemDisk(d)).unwrap();
+        assert_eq!(fs.lookup("kernel-image.elf"), Err(Fat32Error::NotFound));
+        assert_eq!(fs.lookup("KERNEL~1.ELF").unwrap().first_cluster, 14);
     }
 
     #[test]

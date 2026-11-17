@@ -8,7 +8,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 Phase 1, implemented: ELF64 parsing (`src/elf.rs`) for little-endian x86_64 executables with `PT_LOAD` segments. Every offset is checked against the input length before it is read.
 
-Implemented, host-tested: a read-only FAT32 driver (`src/fat32.rs`). It checks the boot sector and refuses volumes that are not FAT32, walks cluster chains, looks up 8.3 names case-insensitively (skipping LFN and deleted entries), and reads files into a caller buffer. It needs no heap. Limits: long file names are not read, so a file is found only by its 8.3 name, and it is not yet used by the loader, which still reads the EFI System Partition through the UEFI file protocol.
+Implemented, host-tested: a read-only FAT32 driver (`src/fat32.rs`). It checks the boot sector and refuses volumes that are not FAT32, walks cluster chains, looks up names case-insensitively by their 8.3 form or their ASCII long file name (LFN chains are checked against the short entry's checksum, and deleted entries are skipped), and reads files into a caller buffer. It needs no heap. Limits: long names must be ASCII and at most 255 bytes, and the driver is not yet used by the loader, which still reads the EFI System Partition through the UEFI file protocol.
 
 ## License
 
