@@ -31,6 +31,10 @@ EXPECTED_QEMU_STATUS=33
 # request/reply over endpoints, timer ticks, and the scheduler's completion line.
 EXPECTED_TEXT=(
     "Hello tpt-k"
+    "handoff: rsdp at 0x"
+    "handoff: framebuffer "
+    "ioapic: rtc irqs=2"
+    "irq: driver woke"
     "paging: remap ok"
     "hello from ring 3"
     "apic: timer"
@@ -40,6 +44,9 @@ EXPECTED_TEXT=(
     "user: exit 2"
     "user: exit 12648430"
     "spawn: child in slot"
+    "spawn: image child in slot"
+    "user: exit 7"
+    "user: exit 90"
     "user: exit 5"
     "trap 3 (breakpoint)"
     "ipc: server got 1 2 3 4"

@@ -7,6 +7,8 @@
 //! heap. This module only decides what happens. The kernel blocks and wakes
 //! threads according to the outcome.
 
+use crate::cap::CapId;
+
 /// Words in one message.
 pub const MESSAGE_WORDS: usize = 4;
 
@@ -15,6 +17,11 @@ pub type Message = [u64; MESSAGE_WORDS];
 
 /// A thread, named by the kernel's thread slot.
 pub type ThreadId = usize;
+
+/// A capability travelling with a message, named by the handle the kernel uses:
+/// the sender's handle while the sender waits, or the receiver's handle once it
+/// has been installed for a waiting receiver. See `Endpoint::send_transfer`.
+pub type Transfer = Option<CapId>;
 
 /// What a send did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,6 +45,9 @@ pub enum RecvOutcome {
         message: Message,
         /// The sender to wake.
         sender: ThreadId,
+        /// The sender's capability, if it sent one. The kernel copies it into
+        /// the receiver's table.
+        transfer: Transfer,
     },
     /// No sender was waiting. The receiver is queued and must block.
     Blocked,
@@ -54,9 +64,9 @@ pub enum EndpointError {
 /// `N` messages held for receivers that have not yet taken them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Endpoint<const N: usize> {
-    senders: [Option<(ThreadId, Message)>; N],
+    senders: [Option<(ThreadId, Message, Transfer)>; N],
     receivers: [Option<ThreadId>; N],
-    delivered: [Option<(ThreadId, Message)>; N],
+    delivered: [Option<(ThreadId, Message, Transfer)>; N],
 }
 
 impl<const N: usize> Default for Endpoint<N> {
@@ -88,13 +98,45 @@ impl<const N: usize> Endpoint<N> {
         sender: ThreadId,
         message: Message,
     ) -> Result<SendOutcome, EndpointError> {
-        if let Some(receiver) = pop_front(&mut self.receivers) {
-            push_back(&mut self.delivered, (receiver, message))?;
+        self.send_transfer(sender, message, None)
+    }
+
+    /// Sends `message` from `sender`, with `transfer` riding along. The transfer
+    /// is stored as given: if a receiver is waiting, the message and transfer
+    /// are held for it, and the kernel has already installed the transfer in
+    /// that receiver's table (see [`Endpoint::next_receiver`]). Otherwise the
+    /// sender joins the send queue with its own handle, and the receiver copies
+    /// it when it takes the message.
+    ///
+    /// # Errors
+    ///
+    /// [`EndpointError::Full`] if no receiver is waiting and the send queue is
+    /// full.
+    pub fn send_transfer(
+        &mut self,
+        sender: ThreadId,
+        message: Message,
+        transfer: Transfer,
+    ) -> Result<SendOutcome, EndpointError> {
+        if let Some(receiver) = self.next_receiver() {
+            // Check for room before taking the receiver off its queue, so a
+            // refused send leaves the queues as they were.
+            if self.delivered.iter().all(Option::is_some) {
+                return Err(EndpointError::Full);
+            }
+            pop_front(&mut self.receivers);
+            push_back(&mut self.delivered, (receiver, message, transfer))?;
             Ok(SendOutcome::Delivered { receiver })
         } else {
-            push_back(&mut self.senders, (sender, message))?;
+            push_back(&mut self.senders, (sender, message, transfer))?;
             Ok(SendOutcome::Blocked)
         }
+    }
+
+    /// The receiver that the next send would deliver to, if one is waiting.
+    #[must_use]
+    pub fn next_receiver(&self) -> Option<ThreadId> {
+        self.receivers.first().copied().flatten()
     }
 
     /// Receives on behalf of `receiver`. If a sender is waiting, its message is
@@ -105,21 +147,33 @@ impl<const N: usize> Endpoint<N> {
     /// [`EndpointError::Full`] if no sender is waiting and the receive queue is
     /// full.
     pub fn receive(&mut self, receiver: ThreadId) -> Result<RecvOutcome, EndpointError> {
-        if let Some((sender, message)) = pop_front(&mut self.senders) {
-            Ok(RecvOutcome::Received { message, sender })
+        if let Some((sender, message, transfer)) = pop_front(&mut self.senders) {
+            Ok(RecvOutcome::Received {
+                message,
+                sender,
+                transfer,
+            })
         } else {
             push_back(&mut self.receivers, receiver)?;
             Ok(RecvOutcome::Blocked)
         }
     }
 
-    /// Takes the message held for `receiver`, if one was delivered to it.
-    pub fn take_delivery(&mut self, receiver: ThreadId) -> Option<Message> {
+    /// Takes the message and transfer held for `receiver`, if one was delivered.
+    pub fn take_delivery_transfer(&mut self, receiver: ThreadId) -> Option<(Message, Transfer)> {
         let index = self
             .delivered
             .iter()
-            .position(|slot| matches!(slot, Some((to, _)) if *to == receiver))?;
-        self.delivered[index].take().map(|(_, message)| message)
+            .position(|slot| matches!(slot, Some((to, _, _)) if *to == receiver))?;
+        self.delivered[index]
+            .take()
+            .map(|(_, message, transfer)| (message, transfer))
+    }
+
+    /// Takes the message held for `receiver`, if one was delivered to it.
+    pub fn take_delivery(&mut self, receiver: ThreadId) -> Option<Message> {
+        self.take_delivery_transfer(receiver)
+            .map(|(message, _)| message)
     }
 
     /// Number of senders waiting.
@@ -170,7 +224,8 @@ mod tests {
             ep.receive(5),
             Ok(RecvOutcome::Received {
                 message: HELLO,
-                sender: 3
+                sender: 3,
+                transfer: None,
             })
         );
         // Nothing is waiting now, so a receive queues.
@@ -200,17 +255,52 @@ mod tests {
             ep.receive(9),
             Ok(RecvOutcome::Received {
                 message: [1; 4],
-                sender: 1
+                sender: 1,
+                transfer: None,
             })
         );
         assert_eq!(
             ep.receive(9),
             Ok(RecvOutcome::Received {
                 message: [2; 4],
-                sender: 2
+                sender: 2,
+                transfer: None,
             })
         );
         assert_eq!(ep.waiting_senders(), 0);
+    }
+
+    #[test]
+    fn a_transfer_waits_with_its_sender_and_is_handed_over() {
+        let mut ep: Endpoint<2> = Endpoint::new();
+        let handle = CapId::from_raw(0x42);
+        assert_eq!(
+            ep.send_transfer(3, HELLO, Some(handle)),
+            Ok(SendOutcome::Blocked)
+        );
+        assert_eq!(
+            ep.receive(5),
+            Ok(RecvOutcome::Received {
+                message: HELLO,
+                sender: 3,
+                transfer: Some(handle),
+            })
+        );
+    }
+
+    #[test]
+    fn a_transfer_to_a_waiting_receiver_is_held_for_it() {
+        let mut ep: Endpoint<2> = Endpoint::new();
+        assert_eq!(ep.receive(5), Ok(RecvOutcome::Blocked));
+        assert_eq!(ep.next_receiver(), Some(5));
+        let installed = CapId::from_raw(0x77);
+        assert_eq!(
+            ep.send_transfer(3, HELLO, Some(installed)),
+            Ok(SendOutcome::Delivered { receiver: 5 })
+        );
+        assert_eq!(ep.next_receiver(), None);
+        assert_eq!(ep.take_delivery_transfer(5), Some((HELLO, Some(installed))));
+        assert_eq!(ep.take_delivery_transfer(5), None);
     }
 
     #[test]
