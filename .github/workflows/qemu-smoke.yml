@@ -23,6 +23,11 @@ jobs:
       - name: Install pinned toolchain
         run: rustup show
 
+      # The kernel is linked against the bare-metal core library. Install it
+      # explicitly, as ci.yml does, so the build does not depend on rustup show.
+      - name: Install bare-metal target
+        run: rustup target add x86_64-unknown-none x86_64-unknown-uefi
+
       - name: Boot the kernel in QEMU
         env:
           OVMF_CODE: /usr/share/OVMF/OVMF_CODE_4M.fd
