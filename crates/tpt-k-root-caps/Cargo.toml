@@ -13,3 +13,5 @@ publish = false
 
 [dependencies]
 tpt-k-ipc-cap = { path = "../tpt-k-ipc-cap" }
+
+[dev-dependencies]

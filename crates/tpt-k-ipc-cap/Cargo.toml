@@ -14,3 +14,5 @@ publish = false
 [dependencies]
 # SHA-256 for the token tag. Uses the no_std build with no default features.
 tpt-primitives = { path = "../../../tpt-primitives/crates/tpt-primitives", default-features = false }
+
+[dev-dependencies]

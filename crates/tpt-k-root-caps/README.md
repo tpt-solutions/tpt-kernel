@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: Fixed-table capability slots for the root server: `mint`, `delegate` (rights may only narrow, and the caller needs GRANT), and `revoke` (needs REVOKE; kills the capability and all its descendants). Slots carry generation counters, so a handle to a revoked capability stays stale after its slot is reused. No heap.
+Implemented, host-tested: Fixed-table capability slots for the root server: `mint`, `delegate` (rights may only narrow, and the caller needs GRANT), and `revoke` (needs REVOKE; kills the capability and all its descendants). Slots carry generation counters, so a handle to a revoked capability stays stale after its slot is reused. No heap Deterministic property-style tests cover random operation sequences.
 
 ## License
 

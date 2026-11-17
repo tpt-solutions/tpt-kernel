@@ -307,3 +307,142 @@ mod tests {
         assert_eq!(t.check(h, Rights::MAP), Err(CapError::NoRight));
     }
 }
+
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use std::vec::Vec;
+
+    /// Deterministic xorshift64 generator. Seeded with a constant, so every run
+    /// checks the same cases. This is property-style testing, not
+    /// coverage-guided fuzzing.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+
+        fn u32(&mut self) -> u32 {
+            self.next() as u32
+        }
+
+        /// A value in `0..n`, for `n > 0`.
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    /// Cases per property. Enough to cover the input space in practice, and
+    /// small enough that the suite stays fast in debug builds.
+    const CASES: usize = 512;
+
+    #[derive(Clone, Copy, Debug)]
+    enum Op {
+        Mint(u64, u32),
+        Delegate(usize, u32),
+        Revoke(usize),
+    }
+
+    fn op(rng: &mut Rng) -> Op {
+        match rng.below(3) {
+            0 => Op::Mint(rng.below(4) as u64, rng.u32()),
+            1 => Op::Delegate(rng.next() as usize, rng.u32()),
+            _ => Op::Revoke(rng.next() as usize),
+        }
+    }
+
+    /// Checks the tree invariants over every live slot.
+    fn check_tree<const N: usize>(t: &CapTable<N>) {
+        for (i, s) in t.slots.iter().enumerate() {
+            if !s.live {
+                continue;
+            }
+            if let Some(p) = s.parent {
+                let ps = &t.slots[p.index as usize];
+                // Invariant: a live capability's parent is live (revocation
+                // cascades), and it is the generation the child recorded.
+                assert!(
+                    ps.live && ps.generation == p.generation,
+                    "live slot {} has a dead parent",
+                    i
+                );
+                // Invariant: a derived capability never holds rights its parent lacks.
+                assert!(
+                    ps.capability.rights.contains(s.capability.rights),
+                    "slot {} has rights its parent lacks",
+                    i
+                );
+                assert_eq!(ps.capability.object, s.capability.object);
+            }
+        }
+    }
+
+    /// True if `h` is on the parent chain of any live slot.
+    fn has_live_descendant_of<const N: usize>(t: &CapTable<N>, h: Handle) -> bool {
+        t.slots.iter().any(|s| {
+            if !s.live {
+                return false;
+            }
+            let mut cur = s.parent;
+            let mut steps = 0;
+            while let Some(p) = cur {
+                if p == h {
+                    return true;
+                }
+                steps += 1;
+                if steps > N {
+                    break;
+                }
+                cur = t.slots[p.index as usize].parent;
+            }
+            false
+        })
+    }
+
+    /// Invariant: no capability widening and no dangling derivation across
+    /// random mint, delegate and revoke sequences. Revoking a capability leaves
+    /// no live descendant.
+    #[test]
+    fn capability_tree_invariants_hold_over_random_operations() {
+        let mut rng = Rng(0x94D0_49BB_1331_11EB);
+        for _ in 0..CASES {
+            let len = rng.below(40);
+            let ops: Vec<Op> = (0..len).map(|_| op(&mut rng)).collect();
+            let mut t: CapTable<8> = CapTable::new();
+            let mut issued: Vec<Handle> = Vec::new();
+            for o in ops {
+                match o {
+                    Op::Mint(obj, r) => {
+                        if let Ok(h) = t.mint(ObjectId(obj), Rights::from_bits(r)) {
+                            issued.push(h);
+                        }
+                    }
+                    Op::Delegate(i, r) => {
+                        if !issued.is_empty() {
+                            let h = issued[i % issued.len()];
+                            if let Ok(c) = t.delegate(h, Rights::from_bits(r)) {
+                                issued.push(c);
+                            }
+                        }
+                    }
+                    Op::Revoke(i) => {
+                        if !issued.is_empty() {
+                            let h = issued[i % issued.len()];
+                            if t.revoke(h).is_ok() {
+                                assert_eq!(t.lookup(h), Err(CapError::Stale));
+                                assert!(!has_live_descendant_of(&t, h));
+                            }
+                        }
+                    }
+                }
+                check_tree(&t);
+            }
+        }
+    }
+}

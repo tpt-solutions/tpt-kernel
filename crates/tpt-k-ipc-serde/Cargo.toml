@@ -12,3 +12,5 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+
+[dev-dependencies]

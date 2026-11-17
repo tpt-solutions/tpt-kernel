@@ -377,3 +377,93 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use std::vec::Vec;
+
+    /// Deterministic xorshift64 generator. Seeded with a constant, so every run
+    /// checks the same cases. This is property-style testing, not
+    /// coverage-guided fuzzing.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+
+        /// A value in `0..n`, for `n > 0`.
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+
+        fn bytes(&mut self, len: usize) -> std::vec::Vec<u8> {
+            (0..len).map(|_| self.next() as u8).collect()
+        }
+    }
+
+    /// Cases per property. Enough to cover the input space in practice, and
+    /// small enough that the suite stays fast in debug builds.
+    const CASES: usize = 512;
+
+    fn words(rng: &mut Rng) -> Vec<u64> {
+        let n = rng.below(17);
+        (0..n).map(|_| rng.next()).collect()
+    }
+
+    /// Invariant: framed messages round-trip exactly, so the IPC wire format
+    /// loses no words or payload bytes.
+    #[test]
+    fn encode_then_decode_round_trips() {
+        let mut rng = Rng(0xA076_1D64_78BD_642F);
+        for _ in 0..CASES {
+            let w = words(&mut rng);
+            let len = rng.below(257);
+            let payload = rng.bytes(len);
+            let mut buf = std::vec![0u8; frame_len(w.len(), payload.len())];
+            let n = encode(&mut buf, &w, &payload).unwrap();
+            let f = decode(&buf[..n]).unwrap();
+            assert_eq!(f.words().collect::<Vec<u64>>(), w);
+            assert_eq!(f.payload(), &payload[..]);
+        }
+    }
+
+    /// Invariant: corruption is detected before any field is used. Any single
+    /// flipped bit of a frame makes decode fail.
+    #[test]
+    fn any_single_bit_flip_is_rejected() {
+        let mut rng = Rng(0xE703_7ED1_A0B4_28DB);
+        for _ in 0..CASES {
+            let w = words(&mut rng);
+            let len = rng.below(257);
+            let payload = rng.bytes(len);
+            let mut buf = std::vec![0u8; frame_len(w.len(), payload.len())];
+            let n = encode(&mut buf, &w, &payload).unwrap();
+            let pos = rng.below(n);
+            let bit = rng.below(8) as u8;
+            buf[pos] ^= 1 << bit;
+            assert!(decode(&buf[..n]).is_err());
+        }
+    }
+
+    /// Invariant: decoding untrusted bytes never panics, whatever the input.
+    #[test]
+    fn decode_never_panics_on_arbitrary_bytes() {
+        let mut rng = Rng(0x8EBC_6AF0_9C88_C6E3);
+        for _ in 0..CASES {
+            let len = rng.below(513);
+            let bytes = rng.bytes(len);
+            if let Ok(f) = decode(&bytes) {
+                let _ = f.words().count();
+                let _ = f.word(0);
+                let _ = f.payload().len();
+            }
+        }
+    }
+}

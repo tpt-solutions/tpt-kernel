@@ -135,6 +135,9 @@ pub enum TokenError {
     BadLength,
     /// The tag does not match: the token was forged or altered.
     BadTag,
+    /// The rights word sets bits this crate does not define. Such a word is
+    /// refused rather than masked, so every wire form maps to one token.
+    BadRights,
 }
 
 impl Token {
@@ -185,12 +188,16 @@ impl Token {
         object.copy_from_slice(&bytes[0..8]);
         let mut rights = [0u8; 4];
         rights.copy_from_slice(&bytes[8..12]);
+        let rights_word = u32::from_le_bytes(rights);
+        if rights_word & !Rights::ALL.bits() != 0 {
+            return Err(TokenError::BadRights);
+        }
         let mut tag = [0u8; 32];
         tag.copy_from_slice(&bytes[12..44]);
         Ok(Self {
             capability: Capability {
                 object: ObjectId(u64::from_le_bytes(object)),
-                rights: Rights::from_bits(u32::from_le_bytes(rights)),
+                rights: Rights::from_bits(rights_word),
             },
             tag,
         })
@@ -330,5 +337,177 @@ mod tests {
             0x2e, 0x32, 0xcf, 0xf7,
         ];
         assert_eq!(tag, expected);
+    }
+}
+
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+
+    /// Deterministic xorshift64 generator. Seeded with a constant, so every run
+    /// checks the same cases. This is property-style testing, not
+    /// coverage-guided fuzzing.
+    struct Rng(u64);
+
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+
+        fn u32(&mut self) -> u32 {
+            self.next() as u32
+        }
+
+        /// A value in `0..n`, for `n > 0`.
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+
+        fn bytes(&mut self, len: usize) -> std::vec::Vec<u8> {
+            (0..len).map(|_| self.next() as u8).collect()
+        }
+    }
+
+    /// Cases per property. Enough to cover the input space in practice, and
+    /// small enough that the suite stays fast in debug builds.
+    const CASES: usize = 512;
+
+    fn rights(rng: &mut Rng) -> Rights {
+        Rights::from_bits(rng.u32())
+    }
+
+    fn key(rng: &mut Rng) -> [u8; 32] {
+        let mut k = [0u8; 32];
+        k.copy_from_slice(&rng.bytes(32));
+        k
+    }
+
+    /// Invariant: capabilities only narrow (Phase 5, property "capability check
+    /// cannot be bypassed"). Attenuation never yields a right the source did not
+    /// hold.
+    #[test]
+    fn attenuate_never_yields_rights_outside_source() {
+        let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+        for _ in 0..CASES {
+            let src = rights(&mut rng);
+            let want = rights(&mut rng);
+            let cap = Capability {
+                object: ObjectId(7),
+                rights: src,
+            };
+            match cap.attenuate(want) {
+                Some(c) => {
+                    assert!(src.contains(c.rights));
+                    assert_eq!(c.rights, want);
+                }
+                None => assert!(!src.contains(want)),
+            }
+        }
+    }
+
+    /// Invariant: a token is bound to its key, so a holder without the key
+    /// cannot re-tag it. A key differing in one byte must not verify.
+    #[test]
+    fn token_does_not_verify_under_a_key_differing_in_one_byte() {
+        let mut rng = Rng(0xD1B5_4A32_D192_ED03);
+        for _ in 0..CASES {
+            let k = key(&mut rng);
+            let object = rng.next();
+            let r = rights(&mut rng);
+            let pos = rng.below(32);
+            let delta = 1 + rng.below(255) as u8;
+            let t = Token::mint(
+                &k,
+                Capability {
+                    object: ObjectId(object),
+                    rights: r,
+                },
+            );
+            let mut other = k;
+            other[pos] ^= delta;
+            assert_eq!(t.verify(&other), Err(TokenError::BadTag));
+            assert!(t.verify(&k).is_ok());
+        }
+    }
+
+    /// Invariant: tampering with a minted token is detected. Any changed wire
+    /// byte either fails to parse or fails verification.
+    #[test]
+    fn any_single_byte_change_to_a_token_fails_verification() {
+        let mut rng = Rng(0x2545_F491_4F6C_DD1D);
+        for _ in 0..CASES {
+            let k = key(&mut rng);
+            let object = rng.next();
+            let r = rights(&mut rng);
+            let pos = rng.below(TOKEN_LEN);
+            let delta = 1 + rng.below(255) as u8;
+            let t = Token::mint(
+                &k,
+                Capability {
+                    object: ObjectId(object),
+                    rights: r,
+                },
+            );
+            let mut bytes = t.to_bytes();
+            bytes[pos] ^= delta;
+            // A parse refusal is also a detection.
+            if let Ok(forged) = Token::from_bytes(&bytes) {
+                assert!(forged.verify(&k).is_err());
+            }
+        }
+    }
+
+    /// Invariant: attenuating a verified token yields a token that verifies and
+    /// carries exactly the narrower rights.
+    #[test]
+    fn attenuated_token_verifies_and_is_a_subset() {
+        let mut rng = Rng(0x6A09_E667_F3BC_C908);
+        for _ in 0..CASES {
+            let k = key(&mut rng);
+            let object = rng.next();
+            let r = rights(&mut rng);
+            let mask = rng.u32();
+            let t = Token::mint(
+                &k,
+                Capability {
+                    object: ObjectId(object),
+                    rights: r,
+                },
+            );
+            let want = Rights::from_bits(r.bits() & mask);
+            let child = t.attenuate(&k, want).unwrap();
+            let cap = child.verify(&k).unwrap();
+            assert!(r.contains(cap.rights));
+            assert_eq!(cap.rights, want);
+            assert_eq!(cap.object, ObjectId(object));
+        }
+    }
+
+    /// Regression for a bug the property tests found. `Token::from_bytes` used
+    /// to mask undefined rights bits, so a wire form with an extra bit set
+    /// still verified as the same token. The fix refuses such a word. Bit 6
+    /// (0x40) is undefined, since `Rights::ALL` covers bits 0 to 5.
+    #[test]
+    fn token_with_undefined_rights_bit_is_refused() {
+        let k = [0x11u8; 32];
+        let t = Token::mint(
+            &k,
+            Capability {
+                object: ObjectId(9),
+                rights: Rights::SEND,
+            },
+        );
+        let clean = t.to_bytes();
+        assert!(Token::from_bytes(&clean).unwrap().verify(&k).is_ok());
+
+        let mut tampered = clean;
+        let word = u32::from_le_bytes([tampered[8], tampered[9], tampered[10], tampered[11]]);
+        tampered[8..12].copy_from_slice(&(word | 0x40).to_le_bytes());
+        assert_eq!(Token::from_bytes(&tampered), Err(TokenError::BadRights));
     }
 }

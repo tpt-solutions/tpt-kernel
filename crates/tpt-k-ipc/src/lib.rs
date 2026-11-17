@@ -109,6 +109,8 @@ pub enum RequestError {
     WordCount,
     /// The opcode word does not fit in 32 bits.
     OpcodeRange,
+    /// The token words do not form a valid token, such as undefined rights bits.
+    BadToken,
 }
 
 /// Reads a request frame. The token is returned unverified.
@@ -130,7 +132,7 @@ fn request_from_frame<'a>(frame: &Frame<'a>) -> Result<Request<'a>, RequestError
     t[20..28].copy_from_slice(&w(4).to_le_bytes());
     t[28..36].copy_from_slice(&w(5).to_le_bytes());
     t[36..44].copy_from_slice(&w(6).to_le_bytes());
-    let token = Token::from_bytes(&t).map_err(|_| RequestError::WordCount)?;
+    let token = Token::from_bytes(&t).map_err(|_| RequestError::BadToken)?;
     Ok(Request {
         opcode,
         token,
