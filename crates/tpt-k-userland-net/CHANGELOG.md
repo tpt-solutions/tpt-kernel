@@ -9,4 +9,6 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Internet checksum with incremental sums and pseudo-header sums (RFC 1071).
+- Ethernet II header, ARP (Ethernet/IPv4), IPv4 with checksum and fragment flags, ICMP echo, UDP, and a TCP header parse and build without options.
+- Fixed-capacity ARP cache with expiry and oldest-entry eviction.

@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-userland-net"
 version = "0.0.0"
-description = "tpt-k user-space TCP/IP network stack daemon (scaffold)."
+description = "tpt-k user-space network stack: Ethernet, ARP, IPv4, ICMP, UDP and TCP header codecs."
 readme = "README.md"
 keywords = ["tcp-ip", "network", "stack", "tpt-k", "daemon"]
 categories = ["os", "network-programming"]

@@ -1,12 +1,12 @@
 # tpt-k-userland-shell
 
-The tpt-k interactive shell.
+The tpt-k shell core: command parser and job table. Process spawning is not built yet.
 
 Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem by TPT Solutions.
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: a command-line parser (quoting, escapes, `|`, `&&`, `||`, `;`, `&`, `<`, `>`, `>>`) and a job table with `fg`/`bg` transitions, `%n` specs and reaping. Starting processes is not done yet; that belongs to the process layer.
 
 ## License
 

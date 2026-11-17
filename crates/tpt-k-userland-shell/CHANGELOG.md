@@ -9,4 +9,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Command-line parser: words with single and double quotes and backslash escapes; pipelines; `&&`, `||`, `;`, `&`; `<`, `>`, `>>` redirections; structured errors.
+- Job table: ids, running/stopped/done states, `fg`/`bg`, `%n` and `%%`/`%-` specs, and reaping of finished jobs.

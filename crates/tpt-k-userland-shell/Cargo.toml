@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-userland-shell"
 version = "0.0.0"
-description = "tpt-k shell: command parser and job control (scaffold)."
+description = "tpt-k shell: command parser and job control."
 readme = "README.md"
 keywords = ["shell", "repl", "cli", "tpt-k", "userland"]
 categories = ["os", "command-line-utilities"]

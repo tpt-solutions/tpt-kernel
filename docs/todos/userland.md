@@ -21,10 +21,10 @@ dependencies (dev-dependencies excepted).
 
 ## Phase 7 — Userland, network & toolchain
 
-- [ ] `tpt-k-userland-shell`: command parser, job control
+- [ ] `tpt-k-userland-shell`: command parser, job control (partly, 2026-11-17: quoting, pipelines, `&&`/`||`/`;`, background and redirections; a job table with fg/bg and reaping. No process spawning yet)
 - [ ] `tpt-k-userland`: meta-crate and interactive shell binary
 - [ ] `tpt-k-userland-libc`: minimal POSIX shim over `tpt-k-ipc`
-- [ ] `tpt-k-userland-net`: user-space TCP/IP stack daemon
+- [ ] `tpt-k-userland-net`: user-space TCP/IP stack daemon (partly, 2026-11-17: Ethernet, ARP, IPv4, ICMP, UDP and TCP-header codecs, the Internet checksum, and an ARP cache; no TCP state machine, no daemon)
 - [ ] Zero-copy packet path: NIC driver → network stack → applications
 - [ ] Network integration tests in QEMU (ping, TCP echo)
 - [ ] Milestone M6 (userland side)
