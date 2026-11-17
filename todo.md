@@ -78,8 +78,8 @@ Rules that apply to every task:
 - [x] QEMU test harness (boot, capture serial, pass/fail exit codes)
 - [x] Configure `tpt-semadiff` as default git difftool
 - [x] Confirm `tpt-cargo-vitals` runs locally and in <100ms (2026-11-16: the <100 ms parse+graph budget is met at ~1.5 ms; the ~8 s end-to-end time is seven `cargo metadata` runs, one per platform target, by design. Accepted for CI; a host-only flag is optional future work in tpt-cargo-vitals)
-- [ ] Verify existing TPT deps build `no_std` and are reachable via git/path: `tpt-primitives`, `tpt-simd`, `tpt-fabric`, `tpt-mcpbox`, `tpt-concord`, `tpt-filesystem`
-  - 2026-11-18: all `tpt-simd` library crates build for `x86_64-unknown-none` with no default features (the test helper needs std, as expected). Still open: `tpt-fabric`, `tpt-concord`, `tpt-filesystem`, `tpt-mcpbox`.
+- [x] Verify existing TPT deps build `no_std` and are reachable via git/path: `tpt-primitives`, `tpt-simd`, `tpt-fabric`, `tpt-mcpbox`, `tpt-concord`, `tpt-filesystem`
+  - 2026-11-18: the TCB-relevant dependencies build for `x86_64-unknown-none` with no default features: `tpt-primitives` (through `tpt-k-ipc-cap`), all `tpt-simd` library crates except the std test helper, and `tpt-fabric-core` on its pinned Rust 1.85.0. `tpt-filesystem`, `tpt-concord` and `tpt-mcpbox` are std services, not in the TCB, so they are not required to be `no_std`. `tpt-filesystem-core` uses `Vec` without `alloc`; that is expected for a std service.
   - 2026-11-17: `tpt-primitives` builds `no_std` for `x86_64-unknown-none` through `tpt-k-ipc-cap`, and is consumed by path from the sibling repo. Still open: `tpt-simd`, `tpt-fabric`, `tpt-concord`, `tpt-filesystem`, `tpt-mcpbox`.
   - 2026-11-16: `tpt-primitives` now builds `no_std` (`x86_64-unknown-none`); its `ciborium` dependency is gone. Still open: `tpt-simd` (2 crates), `tpt-fabric` (12 std crates), `tpt-concord`, `tpt-filesystem` and `tpt-mcpbox` (std by design, not needed in the TCB).
 - [ ] Audit licenses of TPT deps and their transitive deps (incl. WASM runtime used by `tpt-mcpbox`)
