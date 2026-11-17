@@ -46,10 +46,17 @@ pub enum JobError {
 }
 
 /// The job table.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct JobTable {
     jobs: Vec<Job>,
     next_id: u32,
+}
+
+impl Default for JobTable {
+    /// Same as [`JobTable::new`]. Job ids start at 1, not 0.
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl JobTable {
@@ -193,6 +200,13 @@ impl JobTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_table_starts_ids_at_one() {
+        let mut t = JobTable::default();
+        let id = t.add("sleep 1", true);
+        assert_eq!(id, 1);
+    }
 
     #[test]
     fn ids_count_up_and_are_not_reused_after_reap() {
