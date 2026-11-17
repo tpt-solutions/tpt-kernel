@@ -14,7 +14,7 @@ Rules: drivers reach hardware only through capabilities granted by `tpt-k-root`.
 
 - [ ] Driver-host process embedding `tpt-mcpbox` (WASM)
 - [ ] Capability-checked WASM host functions: `mmio_read/write`, `dma_map`, `irq_wait`
-- [ ] `tpt-k-drivers-virtio`: VirtIO console (or keyboard) driver
+- [ ] `tpt-k-drivers-virtio`: VirtIO console (or keyboard) driver (partly, 2026-11-17: split-virtqueue layout and the virtio-blk request layer are encoded and host-tested; no device I/O yet)
 - [ ] Driver receives interrupts via IPC notification
 - [ ] `tpt-k-drivers`: driver manager that monitors health and restarts crashed drivers
 
@@ -25,18 +25,18 @@ Rules: drivers reach hardware only through capabilities granted by `tpt-k-root`.
 
 ## Phase 4 — Storage
 
-- [ ] `tpt-k-drivers-virtio`: VirtIO-blk driver
-- [ ] `tpt-k-drivers-nvme`: user-space NVMe driver
+- [ ] `tpt-k-drivers-virtio`: VirtIO-blk driver (partly, 2026-11-17: queue layout, descriptor chains, request header and config decoding are host-tested; no device I/O yet)
+- [ ] `tpt-k-drivers-nvme`: user-space NVMe driver (partly, 2026-11-17: submission and completion entry encodings, queue and doorbell math, PRP planning; host-tested; no controller I/O yet)
 - [ ] Milestone M4 (driver side)
 
 ## Phase 7 — Networking
 
-- [ ] VirtIO-net driver in `tpt-k-drivers-virtio`
+- [ ] VirtIO-net driver in `tpt-k-drivers-virtio` (open: only the blk layers exist so far)
 
 ## Phase 8 — Driver expansion
 
-- [ ] `tpt-k-drivers-usb-hid`: USB HID driver (keyboard/mouse)
-- [ ] `tpt-k-drivers-synth`: hardware-ID matching against known layouts
+- [ ] `tpt-k-drivers-usb-hid`: USB HID driver (keyboard/mouse) (partly, 2026-11-17: HID report descriptor parser, boot keyboard and boot mouse report decoding; no driver or device I/O yet)
+- [x] `tpt-k-drivers-synth`: hardware-ID matching against known layouts (2026-11-17: most-specific-match rules and a built-in table; host-tested)
 - [ ] `tpt-k-drivers-synth`: generate and load WASM micro-drivers dynamically
 - [ ] Sandbox and capability review for generated drivers
 - [ ] Datasheet-driven generation pipeline (AI/tooling boilerplate reviewed via `tpt-semadiff`)

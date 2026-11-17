@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-drivers-synth"
 version = "0.0.0"
-description = "tpt-k synth engine: hardware-ID matching and micro-driver generation (scaffold)."
+description = "tpt-k synth: hardware-ID matching against known layouts."
 readme = "README.md"
 keywords = ["tpt-k", "drivers", "hardware-id", "codegen", "synthesis"]
 categories = ["os", "hardware-support"]

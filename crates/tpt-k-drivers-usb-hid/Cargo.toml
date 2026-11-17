@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-drivers-usb-hid"
 version = "0.0.0"
-description = "tpt-k USB HID driver (scaffold)."
+description = "tpt-k USB HID driver core: report descriptors and boot keyboard and mouse reports."
 readme = "README.md"
 keywords = ["usb", "hid", "tpt-k", "driver", "input"]
 categories = ["os", "hardware-support"]

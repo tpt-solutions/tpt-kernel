@@ -9,4 +9,6 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- HID report descriptor parser into fixed-capacity input fields, with push/pop, report IDs, and long-item skipping.
+- Boot keyboard report decoding with modifiers, roll-over detection, new-press diffing and a US usage-to-character table.
+- Boot mouse report decoding (buttons and signed deltas).

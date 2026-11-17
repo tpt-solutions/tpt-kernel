@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-drivers-nvme"
 version = "0.0.0"
-description = "tpt-k NVMe block device driver (scaffold)."
+description = "tpt-k NVMe driver: command and queue encodings, doorbells and PRP planning."
 readme = "README.md"
 keywords = ["nvme", "block-device", "tpt-k", "driver", "storage"]
 categories = ["os", "hardware-support"]

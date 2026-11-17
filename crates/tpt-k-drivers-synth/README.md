@@ -1,12 +1,12 @@
 # tpt-k-drivers-synth
 
-The tpt-k synth engine. It matches hardware IDs and generates micro-drivers.
+The tpt-k synth engine. It matches hardware IDs against known layouts. Micro-driver generation is not built yet.
 
 Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem by TPT Solutions.
 
 ## Status
 
-Scaffold: an empty placeholder crate that builds. It has no functionality yet.
+Implemented, host-tested: PCI-style hardware-ID matching. A `Layout` rule matches an exact vendor and device pair, or class, subclass and programming-interface codes. `match_best` picks the most specific rule, then the higher priority, then the first listed. A built-in table covers virtio-blk, NVMe, xHCI and generic USB host controllers. Micro-driver generation is not implemented yet.
 
 ## License
 

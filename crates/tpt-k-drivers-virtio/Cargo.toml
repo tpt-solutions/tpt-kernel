@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-drivers-virtio"
 version = "0.0.0"
-description = "tpt-k VirtIO network and block drivers (scaffold)."
+description = "tpt-k VirtIO: split-virtqueue layout and virtio-blk request encodings."
 readme = "README.md"
 keywords = ["virtio", "network", "block", "tpt-k", "driver"]
 categories = ["os", "hardware-support", "virtualization"]

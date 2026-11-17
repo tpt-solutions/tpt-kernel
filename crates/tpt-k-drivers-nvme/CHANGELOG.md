@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Submission and completion entry encodings, admin and I/O command builders, submission and completion ring math, doorbell offsets, and PRP planning. All host-tested; no device I/O.
