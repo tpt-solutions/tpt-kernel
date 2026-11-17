@@ -14,9 +14,11 @@ pub mod apic;
 pub mod gdt;
 pub mod idt;
 pub mod interrupts;
+pub mod ioapic;
 pub mod paging;
 pub mod pic;
 pub mod pit;
+pub mod rtc;
 pub mod syscall;
 pub mod tss;
 

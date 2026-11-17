@@ -19,6 +19,7 @@ const MSR_APIC_BASE: u32 = 0x1B;
 /// The APIC global enable bit in `IA32_APIC_BASE`.
 const APIC_GLOBAL_ENABLE: u64 = 1 << 11;
 
+const REG_ID: u64 = 0x20;
 const REG_EOI: u64 = 0xB0;
 const REG_SPURIOUS: u64 = 0xF0;
 const REG_LVT_TIMER: u64 = 0x320;
@@ -74,6 +75,12 @@ pub fn enable() {
     write(REG_SPURIOUS, SPURIOUS_ENABLE | SPURIOUS_VECTOR);
     write(REG_LVT_TIMER, LVT_MASKED);
     pic::mask_all();
+}
+
+/// The ID of the running CPU's local APIC, as the IO-APIC names it in a route.
+#[must_use]
+pub fn id() -> u8 {
+    (read(REG_ID) >> 24) as u8
 }
 
 /// Acknowledges the interrupt being handled.
