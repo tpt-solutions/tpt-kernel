@@ -369,6 +369,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-k-toolchain-xtask"
+version = "0.0.0"
+dependencies = [
+ "tpt-k-toolchain",
+]
+
+[[package]]
 name = "tpt-k-userland"
 version = "0.0.0"
 dependencies = [

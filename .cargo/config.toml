@@ -2,6 +2,11 @@
 #
 # Build settings for the workspace.
 
+# `cargo xtask <task>` runs the repo's tasks (check, build-kernel, qemu-smoke,
+# fetch-deps). See crates/tpt-k-toolchain-xtask.
+[alias]
+xtask = "run -q -p tpt-k-toolchain-xtask --bin xtask --"
+
 # x86_64-unknown-none is soft-float with SSE disabled. sha2 0.11 selects its
 # SHA-NI backend there, and rustc 1.95.0 aborts compiling it with
 # "Do not know how to split the result of this operator!". Select the portable

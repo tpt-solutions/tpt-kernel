@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+[package]
+name = "tpt-k-toolchain-xtask"
+version = "0.0.0"
+description = "tpt-k build, check, QEMU smoke test and dependency fetch tasks, run as `cargo xtask`."
+readme = "README.md"
+keywords = ["xtask", "build", "tpt-k", "qemu"]
+categories = ["development-tools::build-utils"]
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+
+[dependencies]
+tpt-k-toolchain = { path = "../tpt-k-toolchain" }
