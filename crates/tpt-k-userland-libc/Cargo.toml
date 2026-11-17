@@ -11,4 +11,8 @@ license.workspace = true
 authors.workspace = true
 publish = false
 
+[features]
+# Exports the string and memory helpers under their C names (see src/cabi.rs).
+c-abi = []
+
 [dependencies]

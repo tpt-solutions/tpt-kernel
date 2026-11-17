@@ -11,6 +11,8 @@
 #[cfg(test)]
 extern crate std;
 
+#[cfg(feature = "c-abi")]
+pub mod cabi;
 pub mod errno;
 pub mod fmt;
 pub mod mem;

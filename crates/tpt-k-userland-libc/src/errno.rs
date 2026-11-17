@@ -18,10 +18,14 @@ pub enum Errno {
     EACCES = 13,
     /// Bad address.
     EFAULT = 14,
+    /// Device or resource busy.
+    EBUSY = 16,
     /// Invalid argument.
     EINVAL = 22,
     /// No space left on device.
     ENOSPC = 28,
+    /// Resource deadlock would occur.
+    EDEADLK = 35,
     /// Function not implemented.
     ENOSYS = 38,
 }
@@ -45,8 +49,10 @@ impl Errno {
             12 => Self::ENOMEM,
             13 => Self::EACCES,
             14 => Self::EFAULT,
+            16 => Self::EBUSY,
             22 => Self::EINVAL,
             28 => Self::ENOSPC,
+            35 => Self::EDEADLK,
             38 => Self::ENOSYS,
             _ => return None,
         })
@@ -77,6 +83,8 @@ mod tests {
             Errno::EFAULT,
             Errno::EINVAL,
             Errno::ENOSPC,
+            Errno::EDEADLK,
+            Errno::EBUSY,
             Errno::ENOSYS,
         ] {
             assert_eq!(Errno::from_code(e.code()), Some(e));
