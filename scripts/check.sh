@@ -25,6 +25,9 @@ cargo clippy --workspace $BARE_METAL --all-targets -- -D warnings
 echo "== cargo test (host)"
 cargo test --workspace $BARE_METAL
 
+echo "== assurance gate (docs/assurance/graph.json)"
+cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- assure --root . --report docs/assurance/report.md >/dev/null
+
 if command -v tpt-cargo-vitals >/dev/null 2>&1; then
     echo "== tpt-cargo-vitals license and CVE gate"
     tpt-cargo-vitals check --path . --enforce-license "$LICENSES" --ci-mode

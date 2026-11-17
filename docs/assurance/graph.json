@@ -1,0 +1,343 @@
+{
+  "_about": "The tpt-k assurance graph. Each claim links to the evidence that backs it. The gate is `tpt-k-build assure` (see crates/tpt-k-toolchain/src/assurance.rs). Kinds: exhaustive and proof are proof-grade; test, property and fuzz are sampled. Paths are relative to the repository root. Edit claims here; the report is generated from this file.",
+  "claims": [
+    {
+      "id": "CAP-1",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "Deriving a capability never yields a right its parent lacks, and derivation needs GRANT on the parent.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        },
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "derive_accepts_exactly_grantable_subsets"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "derive_can_only_narrow_and_needs_grant"
+        }
+      ]
+    },
+    {
+      "id": "CAP-3",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "Revoking a capability revokes every capability derived from it, directly or transitively, and no derived capability outlives its parent.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "revoking_a_parent_revokes_the_whole_derivation_tree"
+        }
+      ]
+    },
+    {
+      "id": "CAP-4",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A handle to a revoked slot is refused even after the slot is reused, and a forged or out-of-range handle names no live capability.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "revoke_invalidates_the_handle_even_after_slot_reuse"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "raw_handles_round_trip_and_forgeries_are_refused"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "out_of_range_handles_are_invalid"
+        }
+      ]
+    },
+    {
+      "id": "CAP-5",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "Revoking a capability revokes every copy made from it in any table, transitively, and no copy outlives its origin.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "revoking_the_source_revokes_copies_in_other_tables_transitively"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "revoking_a_copy_leaves_the_source_alone"
+        }
+      ]
+    },
+    {
+      "id": "CAP-6",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": false,
+      "statement": "A derived capability or a copy names the same kernel object as the capability it came from.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        }
+      ]
+    },
+    {
+      "id": "CAP-7",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A copy across tables carries no right its origin lacks, and a grant needs GRANT on the source.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "grant_needs_grant_and_refuses_widening"
+        }
+      ]
+    },
+    {
+      "id": "CAP-8",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A capability operation that is refused leaves the capability table unchanged.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/cap/invariants.rs",
+          "name": "bounded_exhaustive_capability_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/cap.rs",
+          "name": "table_full_and_double_revoke_are_refused"
+        }
+      ]
+    },
+    {
+      "id": "IPC-1",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "An endpoint neither loses nor duplicates a message: every message sent is queued, held, received or taken exactly once.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint/invariants.rs",
+          "name": "bounded_exhaustive_endpoint_invariants"
+        }
+      ]
+    },
+    {
+      "id": "IPC-2",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A received message comes from the sender it names.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint/invariants.rs",
+          "name": "bounded_exhaustive_endpoint_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint.rs",
+          "name": "sender_first_then_receiver_completes_the_transfer"
+        }
+      ]
+    },
+    {
+      "id": "IPC-3",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "Endpoint queues are first-in, first-out and compact, so messages from senders are received in send order.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint/invariants.rs",
+          "name": "bounded_exhaustive_endpoint_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint.rs",
+          "name": "several_senders_queue_in_fifo_order"
+        }
+      ]
+    },
+    {
+      "id": "IPC-4",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A thread waits in at most one place on an endpoint at a time.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint/invariants.rs",
+          "name": "bounded_exhaustive_endpoint_invariants"
+        }
+      ]
+    },
+    {
+      "id": "IPC-5",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A message is held only for the receiver at the head of the queue, and a thread takes a message only when one was held for it.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint/invariants.rs",
+          "name": "bounded_exhaustive_endpoint_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint.rs",
+          "name": "several_receivers_each_get_their_own_message"
+        }
+      ]
+    },
+    {
+      "id": "IPC-6",
+      "layer": "tpt-k-kernel-ipc",
+      "critical": true,
+      "statement": "A send or receive that is refused because a queue is full leaves the endpoint unchanged.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint/invariants.rs",
+          "name": "bounded_exhaustive_endpoint_invariants"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-ipc/src/endpoint.rs",
+          "name": "full_queues_refuse_instead_of_blocking"
+        }
+      ]
+    },
+    {
+      "id": "TOK-1",
+      "layer": "tpt-k-ipc-cap",
+      "critical": true,
+      "statement": "A capability token that is altered, or that was made under another key, is refused.",
+      "evidence": [
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-cap/src/lib.rs",
+          "name": "altered_rights_or_object_fail_verification"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-cap/src/lib.rs",
+          "name": "any_single_byte_change_to_a_token_fails_verification"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-cap/src/lib.rs",
+          "name": "wrong_key_fails_verification"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-cap/src/lib.rs",
+          "name": "token_does_not_verify_under_a_key_differing_in_one_byte"
+        }
+      ],
+      "waiver": "Sampled tests only. The HMAC-SHA256 construction is checked against RFC 4231, but the token scheme is not model-checked, and the formal model is still open (todo.md, Phase 5)."
+    },
+    {
+      "id": "TOK-2",
+      "layer": "tpt-k-ipc-cap",
+      "critical": true,
+      "statement": "Attenuating a token never yields a right outside the source token's rights.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-ipc-cap/src/invariants.rs",
+          "name": "attenuation_is_exact_over_all_rights_pairs"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-cap/src/lib.rs",
+          "name": "attenuate_never_yields_rights_outside_source"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-cap/src/lib.rs",
+          "name": "rights_narrow_but_never_widen"
+        }
+      ]
+    },
+    {
+      "id": "SER-1",
+      "layer": "tpt-k-ipc-serde",
+      "critical": true,
+      "statement": "The IPC frame decoder and its accessors never panic on hostile or mutated input.",
+      "evidence": [
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-serde/src/fuzz_tests.rs",
+          "name": "fuzz_decode_and_frame_access_never_panic"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc-serde/src/fuzz_tests.rs",
+          "name": "fuzz_random_inputs_never_panic"
+        }
+      ],
+      "waiver": "Deterministic mutation tests only, with no coverage guidance. A libFuzzer campaign is still open (todo.md, Phase 5)."
+    },
+    {
+      "id": "SRV-1",
+      "layer": "tpt-k-ipc",
+      "critical": true,
+      "statement": "A service call is performed only when the token is valid and carries the rights the opcode needs; otherwise the service body does not run.",
+      "evidence": [
+        {
+          "kind": "exhaustive",
+          "path": "crates/tpt-k-ipc/src/invariants.rs",
+          "name": "service_body_runs_exactly_when_token_is_valid_and_rights_allow"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc/src/lib.rs",
+          "name": "missing_rights_are_denied_before_the_service_runs"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc/src/lib.rs",
+          "name": "forged_token_is_denied"
+        },
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-ipc/src/lib.rs",
+          "name": "token_under_another_key_is_denied"
+        }
+      ]
+    }
+  ]
+}

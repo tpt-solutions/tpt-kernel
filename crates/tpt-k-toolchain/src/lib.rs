@@ -8,6 +8,12 @@
 //!
 //! This version only plans. It never runs cargo, and it reads workspace
 //! metadata from text that the caller provides.
+//!
+//! The [`assurance`] module is the other half of the CLI: it checks the
+//! assurance graph that links claims to the tests, exhaustive checks and fuzz
+//! targets that back them.
+
+pub mod assurance;
 
 use serde_json::Value;
 use std::fmt;
