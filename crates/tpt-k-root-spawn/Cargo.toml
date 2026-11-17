@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-root-spawn"
 version = "0.0.0"
-description = "tpt-k root spawn: ELF/WASM loading and process lifecycle (scaffold)."
+description = "tpt-k root spawn: ELF64 load planning for the root server and its children."
 readme = "README.md"
 keywords = ["elf", "wasm", "process", "loader", "tpt-k"]
 categories = ["os", "wasm"]

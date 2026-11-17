@@ -9,4 +9,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Scaffold: placeholder crate that builds, with no functionality yet.
+- Fixed-table capability slots for the root server: `mint`, `delegate` (rights may only narrow, and the caller needs GRANT), and `revoke` (needs REVOKE; kills the capability and all its descendants). Slots carry generation counters, so a handle to a revoked capability stays stale after its slot is reused. No heap.

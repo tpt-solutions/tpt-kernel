@@ -12,9 +12,9 @@ Rules: `#![no_std]` where it is in the TCB, 100% Rust, no C/C++ bindings.
 
 ## Phase 2 — The root server
 
-- [ ] `tpt-k-root-spawn`: ELF loader
+- [ ] `tpt-k-root-spawn`: ELF loader (partly, 2026-11-17: a load planner validates an ELF64 x86-64 image and lists up to 8 PT_LOAD segments and the entry point; it maps nothing yet)
 - [ ] `tpt-k-root-spawn`: process lifecycle management
-- [ ] `tpt-k-root-caps`: capability generation, delegation, revocation
+- [x] `tpt-k-root-caps`: capability generation, delegation, revocation (2026-11-17: fixed-capacity table with generation counters; delegation only narrows and needs GRANT; revoke needs REVOKE and cascades to descendants; host-tested)
 - [ ] `tpt-k-root`: main root server binary, first user-space process
 - [ ] Kernel spawns root server and hands it initial capabilities
 - [ ] Integrate `tpt-fabric` model: Intent → Reservation → Execution → Trace

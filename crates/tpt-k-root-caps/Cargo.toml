@@ -2,7 +2,7 @@
 [package]
 name = "tpt-k-root-caps"
 version = "0.0.0"
-description = "tpt-k root capabilities: generation, delegation, revocation (scaffold)."
+description = "tpt-k root capabilities: generation, delegation, revocation."
 readme = "README.md"
 keywords = ["capability", "delegation", "revocation", "tpt-k", "security"]
 categories = ["os"]
@@ -12,3 +12,4 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+tpt-k-ipc-cap = { path = "../tpt-k-ipc-cap" }
