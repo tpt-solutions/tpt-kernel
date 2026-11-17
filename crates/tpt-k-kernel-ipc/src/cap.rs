@@ -46,6 +46,12 @@ impl Rights {
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
+
+    /// The raw mask: 1 is READ, 2 is WRITE, 4 is GRANT.
+    #[must_use]
+    pub const fn bits(self) -> u64 {
+        self.0 as u64
+    }
 }
 
 /// A handle to a capability: a slot index and the generation the slot had when
@@ -275,6 +281,18 @@ impl<const N: usize> CapTable<N> {
         })
     }
 
+    /// The handle of the capability this one was derived from in this table, if
+    /// the slot is live and was derived.
+    #[must_use]
+    pub fn parent_at(&self, index: usize) -> Option<CapId> {
+        let slot = self.slots.get(index)?;
+        if slot.live {
+            slot.parent
+        } else {
+            None
+        }
+    }
+
     /// The origin of the live capability in slot `index`, if it was copied from
     /// another table.
     #[must_use]
@@ -391,6 +409,111 @@ pub fn revoke_across<const N: usize>(
         if !changed {
             return Ok(());
         }
+    }
+}
+
+/// Deletes capability `id` of table `table`, and nothing else.
+///
+/// Unlike [`revoke_across`], the capabilities derived from `id` stay valid. This
+/// is the right operation when a holder lets go of a handle, such as a thread
+/// exiting. Each capability that descended from `id` is re-linked to `id`'s own
+/// parent or origin, so the derivation tree is kept whole. A later revoke of the
+/// root of that tree still reaches every copy, and a revoke of anything else does
+/// not touch them.
+///
+/// # Errors
+///
+/// [`CapError::InvalidHandle`] if `id` is not live in `table`.
+pub fn delete_across<const N: usize>(
+    tables: &mut [CapTable<N>],
+    table: usize,
+    id: CapId,
+) -> Result<(), CapError> {
+    let deleted = *tables
+        .get(table)
+        .ok_or(CapError::InvalidHandle)?
+        .live_slot(id)?;
+    let deleted_here = Origin { table, handle: id };
+    for holder in tables.iter_mut() {
+        for slot in holder.slots.iter_mut() {
+            if !slot.live {
+                continue;
+            }
+            if slot.origin == Some(deleted_here) {
+                slot.origin = deleted.origin;
+            }
+        }
+    }
+    for slot in tables[table].slots.iter_mut() {
+        if slot.live && slot.parent == Some(id) {
+            slot.parent = deleted.parent;
+        }
+    }
+    tables[table].free(id.index());
+    Ok(())
+}
+
+#[cfg(test)]
+mod delete_tests {
+    use super::*;
+
+    #[test]
+    fn deleting_a_root_keeps_its_copies_in_other_tables() {
+        let mut tables: [CapTable<4>; 3] = [CapTable::new(); 3];
+        let root = tables[0].mint(ObjectId(7), Rights::ALL).unwrap();
+        let source = tables[0];
+        let copy = grant(&source, 0, root, &mut tables[1], Rights::READ).unwrap();
+        let other = tables[0].mint(ObjectId(8), Rights::ALL).unwrap();
+        delete_across(&mut tables, 0, root).unwrap();
+        assert_eq!(tables[1].lookup(copy, Rights::READ), Ok(ObjectId(7)));
+        // A revoke of an unrelated capability does not reach the copy.
+        revoke_across(&mut tables, 0, other).unwrap();
+        assert_eq!(tables[1].lookup(copy, Rights::READ), Ok(ObjectId(7)));
+    }
+
+    #[test]
+    fn a_later_revoke_of_the_root_still_reaches_relinked_copies() {
+        let mut tables: [CapTable<4>; 3] = [CapTable::new(); 3];
+        let root = tables[0].mint(ObjectId(7), Rights::ALL).unwrap();
+        let source = tables[0];
+        let mid = grant(&source, 0, root, &mut tables[1], Rights::ALL).unwrap();
+        let source = tables[1];
+        let leaf = grant(&source, 1, mid, &mut tables[2], Rights::READ).unwrap();
+        // Delete the middle copy. The leaf now descends from the root.
+        delete_across(&mut tables, 1, mid).unwrap();
+        assert_eq!(tables[2].lookup(leaf, Rights::READ), Ok(ObjectId(7)));
+        revoke_across(&mut tables, 0, root).unwrap();
+        assert_eq!(
+            tables[2].lookup(leaf, Rights::READ),
+            Err(CapError::InvalidHandle)
+        );
+    }
+
+    #[test]
+    fn deleting_a_derived_capability_relinks_its_children_to_its_parent() {
+        let mut table: [CapTable<4>; 1] = [CapTable::new()];
+        let root = table[0].mint(ObjectId(3), Rights::ALL).unwrap();
+        let middle = table[0].derive(root, Rights::ALL).unwrap();
+        let leaf = table[0].derive(middle, Rights::READ).unwrap();
+        delete_across(&mut table, 0, middle).unwrap();
+        assert_eq!(table[0].lookup(leaf, Rights::READ), Ok(ObjectId(3)));
+        // The leaf is still under the root, so revoking the root takes it.
+        revoke_across(&mut table, 0, root).unwrap();
+        assert_eq!(
+            table[0].lookup(leaf, Rights::READ),
+            Err(CapError::InvalidHandle)
+        );
+    }
+
+    #[test]
+    fn deleting_a_stale_handle_is_refused() {
+        let mut tables: [CapTable<2>; 1] = [CapTable::new()];
+        let root = tables[0].mint(ObjectId(1), Rights::ALL).unwrap();
+        delete_across(&mut tables, 0, root).unwrap();
+        assert_eq!(
+            delete_across(&mut tables, 0, root),
+            Err(CapError::InvalidHandle)
+        );
     }
 }
 
