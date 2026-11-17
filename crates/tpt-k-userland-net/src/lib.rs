@@ -6,8 +6,8 @@
 //! TCP header. The module [`arp_cache`] holds a fixed-size ARP table. There are
 //! no sockets and no device I/O here; the daemon supplies those.
 //!
-//! Checksums are checked on parse, and written on build. A TCP state machine is
-//! not included.
+//! Checksums are checked on parse, and written on build. The TCP connection
+//! state machine is in [`tcp_conn`]; it has no retransmission or congestion control.
 
 pub mod arp;
 pub mod arp_cache;
@@ -16,6 +16,7 @@ pub mod ethernet;
 pub mod icmp;
 pub mod ipv4;
 pub mod tcp;
+pub mod tcp_conn;
 pub mod udp;
 
 /// Why a frame or packet could not be parsed or built.
