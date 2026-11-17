@@ -27,4 +27,4 @@ Rules: `#![no_std]`, 100% Rust, no C/C++ bindings.
 ## Phase 9 — Hardening
 
 - [ ] Performance benchmarks: IPC latency
-- [ ] Fuzz the IPC serde path (feeds Phase 5 in the master plan)
+- [ ] Fuzz the IPC serde path (feeds Phase 5 in the master plan) (partly, 2026-11-17: deterministic mutation tests on the frame decoder; not coverage-guided fuzzing)

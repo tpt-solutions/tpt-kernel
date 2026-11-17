@@ -35,4 +35,4 @@ fuzz targets.
 
 ## Assurance
 
-- [ ] Fuzzing campaigns for the ACPI, PCI, FDT, and USB parsers (feeds Phase 5 in the master plan)
+- [ ] Fuzzing campaigns for the ACPI, PCI, FDT, and USB parsers (feeds Phase 5 in the master plan) (partly, 2026-11-17: deterministic mutation tests with 2000 cases each, no panics found; not coverage-guided fuzzing)

@@ -122,6 +122,7 @@ those repo todos are done.
 - [ ] Define core IPC + capability invariants in `tpt-concord` (e.g., "capability check cannot be bypassed")
 - [ ] Property tests linked to each invariant
 - [ ] Fuzzing campaigns: syscall interface, IPC serde, ACPI/PCI/FDT/USB parsers
+  - 2026-11-17: deterministic mutation tests cover the ACPI, PCI, FDT, USB and IPC serde parsers and the ELF planner, with no panics found. Coverage-guided fuzzing and the syscall interface are still open.
 - [ ] SMT/model-checking artifacts for capability + IPC invariants
 - [ ] Build Assurance Graph; link proofs/tests/fuzzing to kernel specs
 - [ ] CI gate fails when graph shows unproven critical claims
