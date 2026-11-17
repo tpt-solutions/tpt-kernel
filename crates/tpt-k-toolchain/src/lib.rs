@@ -14,6 +14,8 @@
 //! targets that back them.
 
 pub mod assurance;
+pub mod doctor;
+pub mod runner;
 
 use serde_json::Value;
 use std::fmt;
@@ -228,18 +230,20 @@ pub fn plan(crates: &[CrateInfo], subcommand: Subcommand) -> Plan {
     Plan { steps }
 }
 
-/// The steps that assemble the boot image, as text lines. Nothing here is run.
+/// The steps that assemble the boot image, as text lines. Nothing here is run:
+/// `tpt-k-build image --run` runs them.
 ///
-/// The loader and the kernel are built and the root server is built for the
-/// host. The volume step names the FAT32 writer in `tpt-k-toolchain-iso`,
-/// which is not called from this CLI yet.
+/// The steps are the ones in [`runner::plan_image`]. The kernel and the loader
+/// are built, and the EFI System Partition is staged in `target/tpt-k/esp`. The
+/// root server is not part of the image yet, and the FAT32 writer in
+/// `tpt-k-toolchain-iso` is not used, since the staged directory is read by QEMU's
+/// FAT driver.
 #[must_use]
 pub fn image_steps() -> Vec<String> {
     vec![
-        format!("1. cargo build -p tpt-k-boot --target {TARGET_UEFI}"),
-        "2. scripts/build-kernel.sh  (kernel, links with its linker script)".to_string(),
-        "3. cargo build -p tpt-k-root".to_string(),
-        "4. volume: EFI/BOOT/BOOTX64.EFI, TPTK/KERNEL.ELF, TPTK/ROOT.ELF (tpt-k-toolchain-iso, not wired yet)".to_string(),
+        "1. cargo rustc -p tpt-k-kernel --bin tpt-k-kernel --target x86_64-unknown-none (kernel, with its linker script)".to_string(),
+        format!("2. cargo build -p tpt-k-boot --target {TARGET_UEFI} (loader)"),
+        "3. stage target/tpt-k/esp: EFI/BOOT/BOOTX64.EFI, TPTK/KERNEL.ELF".to_string(),
     ]
 }
 
@@ -422,12 +426,12 @@ mod tests {
     }
 
     #[test]
-    fn image_steps_name_boot_kernel_and_root() {
+    fn image_steps_name_the_kernel_loader_and_esp() {
         let steps = image_steps();
-        assert_eq!(steps.len(), 4);
-        assert!(steps[0].contains("tpt-k-boot --target x86_64-unknown-uefi"));
-        assert!(steps[1].contains("build-kernel.sh"));
-        assert!(steps[2].contains("tpt-k-root"));
-        assert!(steps[3].contains("BOOTX64.EFI"));
+        assert_eq!(steps.len(), 3);
+        assert!(steps[0].contains("tpt-k-kernel --bin tpt-k-kernel --target x86_64-unknown-none"));
+        assert!(steps[1].contains("tpt-k-boot --target x86_64-unknown-uefi"));
+        assert!(steps[2].contains("BOOTX64.EFI"));
+        assert!(steps[2].contains("KERNEL.ELF"));
     }
 }

@@ -32,7 +32,8 @@ fn help_exits_zero_and_says_cargo_is_not_run() {
     let out = build(&["help"]);
     assert!(out.status.success());
     let stdout = String::from_utf8(out.stdout).unwrap();
-    assert!(stdout.contains("never runs cargo"));
+    assert!(stdout.contains("never run cargo"));
+    assert!(stdout.contains("image --run"));
 }
 
 #[test]
@@ -55,5 +56,20 @@ fn metadata_file_is_read() {
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
         "cargo check -p tpt-k-ipc\n"
+    );
+}
+
+#[test]
+fn doctor_prints_a_report_whatever_the_machine_has() {
+    // The exit status depends on the machine (QEMU and OVMF may be absent),
+    // so only the shape of the report is checked here.
+    let out = build(&["doctor"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.starts_with("tpt-k doctor\n"), "{text}");
+    assert!(text.contains("rust toolchain:") || text.contains("rust toolchain"));
+    assert!(
+        text.contains("doctor: all required checks passed")
+            || text.contains("required check(s) failed"),
+        "{text}"
     );
 }
