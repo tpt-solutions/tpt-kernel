@@ -3,8 +3,9 @@
 //!
 //! The loader reads `TPTK\KERNEL.ELF` from the boot volume, places its
 //! `PT_LOAD` segments at their physical addresses, leaves boot services, and
-//! jumps to the entry point. The handoff argument is 0 for now. The memory map
-//! is not passed on yet.
+//! jumps to the entry point. The kernel receives an 80-byte handoff record in
+//! `rdi`, which points to the UEFI memory map, the ACPI RSDP and the GOP
+//! framebuffer. The layout is defined by `BootInfo` below.
 
 #![no_std]
 #![no_main]

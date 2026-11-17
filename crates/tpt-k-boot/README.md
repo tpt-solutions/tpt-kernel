@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Phase 1, implemented. The loader reads `TPTK\KERNEL.ELF` from the boot volume. The handoff argument is 0 for now, and the memory map is not passed to the kernel yet.
+Phase 1, implemented. The loader reads `TPTK\KERNEL.ELF` from the boot volume. The kernel is entered with an 80-byte handoff record in `rdi`. It carries the UEFI memory map (address, byte length and descriptor size), the ACPI RSDP address and the GOP framebuffer. The layout is `BootInfo` in `src/main.rs`, and it is mirrored in `tpt-k-kernel-mem::bootmap`, so the two must agree.
 
 ## Build
 
