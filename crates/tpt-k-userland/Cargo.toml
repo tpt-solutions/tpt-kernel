@@ -3,6 +3,9 @@
 name = "tpt-k-userland"
 version = "0.0.0"
 description = "tpt-k userland meta-crate and interactive shell binary (scaffold)."
+readme = "README.md"
+keywords = ["shell", "userland", "tpt-k", "posix", "os"]
+categories = ["os", "command-line-utilities"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

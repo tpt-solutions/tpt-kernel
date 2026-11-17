@@ -3,6 +3,9 @@
 name = "tpt-k-kernel-ipc"
 version = "0.0.0"
 description = "tpt-k kernel IPC: kernel-side routing, syscall entry/exit, capability translation (scaffold)."
+readme = "README.md"
+keywords = ["ipc", "capability", "endpoint", "microkernel", "tpt-k"]
+categories = ["os", "no-std"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

@@ -3,6 +3,9 @@
 name = "tpt-k-root"
 version = "0.0.0"
 description = "tpt-k root server: first user-space process and capability authority (scaffold)."
+readme = "README.md"
+keywords = ["root-server", "capability", "microkernel", "tpt-k", "init"]
+categories = ["os"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

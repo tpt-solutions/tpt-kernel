@@ -3,6 +3,9 @@
 name = "tpt-k-hal-usb"
 version = "0.0.0"
 description = "tpt-k HAL USB: descriptor parser (scaffold)."
+readme = "README.md"
+keywords = ["usb", "descriptor", "tpt-k", "hardware", "parser"]
+categories = ["os", "hardware-support", "parser-implementations"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

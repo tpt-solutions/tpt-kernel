@@ -3,6 +3,9 @@
 name = "tpt-k-boot-efi"
 version = "0.0.0"
 description = "tpt-k UEFI safe wrappers for boot and runtime services (scaffold)."
+readme = "README.md"
+keywords = ["uefi", "firmware", "bootloader", "tpt-k", "ffi"]
+categories = ["os", "no-std"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

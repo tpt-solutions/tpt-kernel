@@ -3,6 +3,9 @@
 name = "tpt-k-kernel-arch-aarch64"
 version = "0.0.0"
 description = "tpt-k kernel AArch64 primitives: exception levels, MMU, GIC (stub)."
+readme = "README.md"
+keywords = ["aarch64", "arm", "mmu", "gic", "tpt-k"]
+categories = ["os", "no-std", "embedded"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

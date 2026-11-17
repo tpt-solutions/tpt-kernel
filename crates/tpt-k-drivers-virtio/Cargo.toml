@@ -3,6 +3,9 @@
 name = "tpt-k-drivers-virtio"
 version = "0.0.0"
 description = "tpt-k VirtIO network and block drivers (scaffold)."
+readme = "README.md"
+keywords = ["virtio", "network", "block", "tpt-k", "driver"]
+categories = ["os", "hardware-support", "virtualization"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

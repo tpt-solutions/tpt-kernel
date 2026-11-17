@@ -3,6 +3,9 @@
 name = "tpt-k-kernel"
 version = "0.0.0"
 description = "tpt-k kernel main binary: early boot entry, stack setup, panic handler."
+readme = "README.md"
+keywords = ["microkernel", "kernel", "x86-64", "tpt-k", "capability"]
+categories = ["os", "no-std"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

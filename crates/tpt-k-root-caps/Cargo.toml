@@ -3,6 +3,9 @@
 name = "tpt-k-root-caps"
 version = "0.0.0"
 description = "tpt-k root capabilities: generation, delegation, revocation (scaffold)."
+readme = "README.md"
+keywords = ["capability", "delegation", "revocation", "tpt-k", "security"]
+categories = ["os"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

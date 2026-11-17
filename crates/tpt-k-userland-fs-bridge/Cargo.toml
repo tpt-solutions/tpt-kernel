@@ -3,6 +3,9 @@
 name = "tpt-k-userland-fs-bridge"
 version = "0.0.0"
 description = "tpt-k filesystem bridge: translates IPC requests to tpt-filesystem (scaffold)."
+readme = "README.md"
+keywords = ["filesystem", "ipc", "bridge", "tpt-k", "fs"]
+categories = ["os", "filesystem"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

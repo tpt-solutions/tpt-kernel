@@ -3,6 +3,9 @@
 name = "tpt-k-drivers-nvme"
 version = "0.0.0"
 description = "tpt-k NVMe block device driver (scaffold)."
+readme = "README.md"
+keywords = ["nvme", "block-device", "tpt-k", "driver", "storage"]
+categories = ["os", "hardware-support"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

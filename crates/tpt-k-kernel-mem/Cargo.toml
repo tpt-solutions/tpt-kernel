@@ -3,6 +3,9 @@
 name = "tpt-k-kernel-mem"
 version = "0.0.0"
 description = "tpt-k kernel memory: physical page frame allocator and virtual memory management (scaffold)."
+readme = "README.md"
+keywords = ["memory", "frame-allocator", "paging", "microkernel", "tpt-k"]
+categories = ["os", "no-std"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

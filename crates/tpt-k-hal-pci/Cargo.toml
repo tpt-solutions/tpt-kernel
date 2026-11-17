@@ -3,6 +3,9 @@
 name = "tpt-k-hal-pci"
 version = "0.0.0"
 description = "tpt-k HAL PCIe: config space enumeration and BAR parsing (scaffold)."
+readme = "README.md"
+keywords = ["pci", "pcie", "tpt-k", "bar", "hardware"]
+categories = ["os", "hardware-support"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

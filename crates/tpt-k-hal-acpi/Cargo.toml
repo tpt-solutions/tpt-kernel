@@ -3,6 +3,9 @@
 name = "tpt-k-hal-acpi"
 version = "0.0.0"
 description = "tpt-k HAL ACPI parser: MADT, MCFG, DSDT/SSDT (scaffold)."
+readme = "README.md"
+keywords = ["acpi", "firmware", "madt", "tpt-k", "hardware"]
+categories = ["os", "hardware-support", "parser-implementations"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

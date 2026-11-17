@@ -3,6 +3,9 @@
 name = "tpt-k-root-spawn"
 version = "0.0.0"
 description = "tpt-k root spawn: ELF/WASM loading and process lifecycle (scaffold)."
+readme = "README.md"
+keywords = ["elf", "wasm", "process", "loader", "tpt-k"]
+categories = ["os", "wasm"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

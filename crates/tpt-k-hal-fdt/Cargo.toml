@@ -3,6 +3,9 @@
 name = "tpt-k-hal-fdt"
 version = "0.0.0"
 description = "tpt-k HAL FDT parser: flattened device trees (scaffold)."
+readme = "README.md"
+keywords = ["devicetree", "fdt", "tpt-k", "firmware", "parser"]
+categories = ["os", "hardware-support", "parser-implementations"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

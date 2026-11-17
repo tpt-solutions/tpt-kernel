@@ -3,6 +3,9 @@
 name = "tpt-k-boot"
 version = "0.0.0"
 description = "tpt-k UEFI bootloader application (scaffold)."
+readme = "README.md"
+keywords = ["uefi", "bootloader", "tpt-k", "x86-64", "elf"]
+categories = ["os", "no-std"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

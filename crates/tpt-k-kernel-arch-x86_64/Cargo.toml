@@ -3,6 +3,9 @@
 name = "tpt-k-kernel-arch-x86_64"
 version = "0.0.0"
 description = "tpt-k kernel x86_64 primitives: GDT, IDT, APIC, paging (scaffold)."
+readme = "README.md"
+keywords = ["x86-64", "apic", "paging", "idt", "tpt-k"]
+categories = ["os", "no-std", "hardware-support"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

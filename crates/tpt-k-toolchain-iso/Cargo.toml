@@ -3,6 +3,9 @@
 name = "tpt-k-toolchain-iso"
 version = "0.0.0"
 description = "tpt-k bootable UEFI ISO and raw disk image assembly (scaffold)."
+readme = "README.md"
+keywords = ["iso", "uefi", "disk-image", "tpt-k", "bootable"]
+categories = ["development-tools::build-utils", "os"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

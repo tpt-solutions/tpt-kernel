@@ -3,6 +3,9 @@
 name = "tpt-k-toolchain"
 version = "0.0.0"
 description = "tpt-k build CLI: resolves deps, cross-compiles workspaces, links binaries (scaffold)."
+readme = "README.md"
+keywords = ["build", "cross-compile", "linker", "tpt-k", "cli"]
+categories = ["development-tools", "development-tools::build-utils", "command-line-utilities"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

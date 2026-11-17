@@ -3,6 +3,9 @@
 name = "tpt-k-ipc"
 version = "0.0.0"
 description = "tpt-k IPC client/server framework (scaffold)."
+readme = "README.md"
+keywords = ["ipc", "microkernel", "tpt-k", "capability", "client-server"]
+categories = ["os", "concurrency"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

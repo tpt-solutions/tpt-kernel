@@ -1,0 +1,18 @@
+# Changelog
+
+All notable changes to this crate are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- Port I/O, COM1 serial console, and QEMU debug-exit device.
+- Flat GDT, TSS, and IDT with CPU exception handlers and remapped IRQ vectors.
+- Legacy PIC and PIT timer, and nestable interrupt-state sections.
+- Local APIC timer (calibrated against the PIT) and IO-APIC routing.
+- CMOS RTC periodic interrupt for testing the IO-APIC route.
+- 4-level paging with a 2 MiB identity map and 4 KiB remapping.
+- `SYSCALL`/`SYSRET` entry and transfer into user mode.

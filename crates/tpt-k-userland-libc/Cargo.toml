@@ -3,6 +3,9 @@
 name = "tpt-k-userland-libc"
 version = "0.0.0"
 description = "tpt-k minimal POSIX shim over tpt-k-ipc (scaffold)."
+readme = "README.md"
+keywords = ["posix", "libc", "ipc", "tpt-k", "shim"]
+categories = ["os", "os::unix-apis"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true

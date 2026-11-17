@@ -3,6 +3,9 @@
 name = "tpt-k-userland-shell"
 version = "0.0.0"
 description = "tpt-k shell: command parser and job control (scaffold)."
+readme = "README.md"
+keywords = ["shell", "repl", "cli", "tpt-k", "userland"]
+categories = ["os", "command-line-utilities"]
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
