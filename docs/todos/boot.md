@@ -17,7 +17,7 @@ dependencies (dev-dependencies excepted).
 - [ ] `tpt-k-boot-fs`: minimal read-only FAT32 driver (deferred: M1 reads the ESP through the UEFI file protocol; `tpt-k-boot-fs::elf` is the ELF64 parser, host-tested)
 - [x] `tpt-k-boot`: UEFI app that locates the kernel on the ESP (2026-11-16: `TPTK\KERNEL.ELF`; root server image not yet)
 - [x] Load kernel binary into memory, obtain memory map, exit boot services (2026-11-16: ELF64 PT_LOAD segments at their physical addresses)
-- [ ] Define boot info handoff struct (memory map, framebuffer, ACPI RSDP, etc.) (partly, 2026-11-17: a versioned 40-byte record with the memory map, passed in rdi; framebuffer and ACPI RSDP are open; the layout is mirrored in tpt-k-kernel-mem::bootmap)
+- [x] Define boot info handoff struct (memory map, framebuffer, ACPI RSDP, etc.) (2026-11-17: a versioned record, passed in rdi, with the memory map; 2026-11-17 version 2 adds the ACPI 2.0 RSDP address and the GOP framebuffer (base, size, width, height, stride, pixel format); the layout is mirrored in tpt-k-kernel-mem::bootmap. Absent firmware facts are recorded as zero. Verified by the QEMU smoke test under OVMF, which reports rsdp 0xf77e014 and a 1280x800 BGRX framebuffer)
 - [ ] Jump to kernel entry with correct state (partly: rdi holds the handoff record; firmware paging is replaced by the kernel)
 
 ### Verification
@@ -33,4 +33,4 @@ dependencies (dev-dependencies excepted).
 
 ## Open decisions
 
-- [ ] Choose the handoff struct layout's versioning rule, so the kernel can reject an incompatible loader
+- [x] Choose the handoff struct layout's versioning rule, so the kernel can reject an incompatible loader (2026-11-17: the kernel accepts exactly one version, `bootmap::VERSION`; any layout change bumps it, and the kernel refuses the rest. Documented in `bootmap.rs`)

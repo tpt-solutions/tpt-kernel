@@ -3,7 +3,11 @@
 //! memory map it points at. The kernel builds its frame allocator from the map.
 //!
 //! The record layout is mirrored in the boot loader (`tpt-k-boot`), which writes
-//! it. The two must agree. The layout is 40 bytes, little-endian.
+//! it. The two must agree. The layout is 80 bytes, little-endian.
+//!
+//! Versioning rule: the loader and the kernel are built from the same tree, so
+//! the kernel accepts exactly one version. Any change to the layout bumps
+//! [`VERSION`], and the kernel refuses every other value.
 
 use core::ptr;
 
@@ -13,7 +17,19 @@ use crate::{Frame, FrameAllocator, FRAME_SIZE};
 pub const MAGIC: u64 = u64::from_le_bytes(*b"TPTKBOOT");
 
 /// The record's version. The kernel refuses other versions.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
+
+/// Pixel format of the framebuffer, as the loader reports it.
+pub mod pixel_format {
+    /// No framebuffer was found.
+    pub const NONE: u32 = 0;
+    /// 32-bit pixels, red in the low byte (`PixelRedGreenBlueReserved8BitPerColor`).
+    pub const RGBX: u32 = 1;
+    /// 32-bit pixels, blue in the low byte (`PixelBlueGreenRedReserved8BitPerColor`).
+    pub const BGRX: u32 = 2;
+    /// Any other layout. The masks are not passed on, so use only the address.
+    pub const OTHER: u32 = 3;
+}
 
 /// The UEFI memory type of conventional (free) memory.
 const EFI_CONVENTIONAL_MEMORY: u32 = 7;
@@ -37,9 +53,23 @@ pub struct BootInfo {
     pub map_bytes: u64,
     /// Bytes from one descriptor to the next.
     pub descriptor_size: u64,
+    /// Physical address of the ACPI 2.0+ RSDP, or zero if firmware has none.
+    pub rsdp_phys: u64,
+    /// Physical address of the linear framebuffer, or zero if there is none.
+    pub fb_base: u64,
+    /// Bytes of the framebuffer.
+    pub fb_size: u64,
+    /// Visible width in pixels.
+    pub fb_width: u32,
+    /// Visible height in pixels.
+    pub fb_height: u32,
+    /// Pixels from one row to the next (may exceed `fb_width`).
+    pub fb_stride: u32,
+    /// One of the [`pixel_format`] values.
+    pub fb_format: u32,
 }
 
-const _: () = assert!(core::mem::size_of::<BootInfo>() == 40);
+const _: () = assert!(core::mem::size_of::<BootInfo>() == 80);
 
 /// Reads the handoff record at `address`, or returns `None` if it is absent or
 /// has the wrong magic or version.
@@ -139,23 +169,54 @@ mod tests {
             map_phys: map.as_ptr() as u64,
             map_bytes: map.len() as u64,
             descriptor_size: 40,
+            rsdp_phys: 0,
+            fb_base: 0,
+            fb_size: 0,
+            fb_width: 0,
+            fb_height: 0,
+            fb_stride: 0,
+            fb_format: pixel_format::NONE,
         }
     }
 
     #[test]
     fn record_layout_and_magic() {
         assert_eq!(MAGIC.to_le_bytes(), *b"TPTKBOOT");
-        let mut bytes = [0u8; 40];
+        let mut bytes = [0u8; 80];
         bytes[..8].copy_from_slice(&MAGIC.to_le_bytes());
         bytes[8..12].copy_from_slice(&VERSION.to_le_bytes());
-        // SAFETY: the array is 40 readable bytes.
+        // SAFETY: the array is 80 readable bytes.
         let info = unsafe { read(bytes.as_ptr() as u64) }.unwrap();
         assert_eq!(info.version, VERSION);
-        bytes[8..12].copy_from_slice(&2u32.to_le_bytes());
+        // Version 1 (the 40-byte record) is refused.
+        bytes[8..12].copy_from_slice(&1u32.to_le_bytes());
         // SAFETY: as above.
         assert_eq!(unsafe { read(bytes.as_ptr() as u64) }, None);
         // SAFETY: zero means no record.
         assert_eq!(unsafe { read(0) }, None);
+    }
+
+    #[test]
+    fn firmware_fields_are_read_back() {
+        let mut bytes = [0u8; 80];
+        bytes[..8].copy_from_slice(&MAGIC.to_le_bytes());
+        bytes[8..12].copy_from_slice(&VERSION.to_le_bytes());
+        bytes[40..48].copy_from_slice(&0xE_0000u64.to_le_bytes()); // rsdp
+        bytes[48..56].copy_from_slice(&0x8000_0000u64.to_le_bytes()); // fb base
+        bytes[56..64].copy_from_slice(&0x0080_0000u64.to_le_bytes()); // fb size
+        bytes[64..68].copy_from_slice(&1024u32.to_le_bytes()); // width
+        bytes[68..72].copy_from_slice(&768u32.to_le_bytes()); // height
+        bytes[72..76].copy_from_slice(&1024u32.to_le_bytes()); // stride
+        bytes[76..80].copy_from_slice(&pixel_format::BGRX.to_le_bytes());
+        // SAFETY: the array is 80 readable bytes.
+        let info = unsafe { read(bytes.as_ptr() as u64) }.unwrap();
+        assert_eq!(info.rsdp_phys, 0xE_0000);
+        assert_eq!((info.fb_base, info.fb_size), (0x8000_0000, 0x0080_0000));
+        assert_eq!(
+            (info.fb_width, info.fb_height, info.fb_stride),
+            (1024, 768, 1024)
+        );
+        assert_eq!(info.fb_format, pixel_format::BGRX);
     }
 
     #[test]

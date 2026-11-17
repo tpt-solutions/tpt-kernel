@@ -78,6 +78,103 @@ pub const ALLOCATE_ADDRESS: u32 = 2;
 /// `EFI_FILE_MODE_READ`.
 pub const FILE_MODE_READ: u64 = 1;
 
+/// `EFI_GRAPHICS_OUTPUT_PROTOCOL`.
+pub const GRAPHICS_OUTPUT_GUID: Guid = Guid {
+    data1: 0x9042_A9DE,
+    data2: 0x23DC,
+    data3: 0x4A38,
+    data4: [0x96, 0xFB, 0x7A, 0xDE, 0xD0, 0x80, 0x51, 0x6A],
+};
+
+/// `EFI_ACPI_20_TABLE_GUID`: the configuration-table entry for the ACPI 2.0+ RSDP.
+pub const ACPI_20_TABLE_GUID: Guid = Guid {
+    data1: 0x8868_E871,
+    data2: 0xE4F1,
+    data3: 0x11D3,
+    data4: [0xBC, 0x22, 0x00, 0x80, 0xC7, 0x3C, 0x88, 0x81],
+};
+
+/// `EFI_GRAPHICS_OUTPUT_PROTOCOL`, up to `Mode`.
+#[repr(C)]
+pub struct GraphicsOutput {
+    /// `QueryMode`. Not used.
+    pub query_mode: *const c_void,
+    /// `SetMode`. Not used.
+    pub set_mode: *const c_void,
+    /// `Blt`. Not used.
+    pub blt: *const c_void,
+    /// The current mode.
+    pub mode: *const GraphicsOutputMode,
+}
+
+/// `EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE`.
+#[repr(C)]
+pub struct GraphicsOutputMode {
+    /// Number of modes the device supports.
+    pub max_mode: u32,
+    /// The current mode number.
+    pub mode: u32,
+    /// Information about the current mode.
+    pub info: *const GraphicsOutputModeInfo,
+    /// Size of `info` in bytes.
+    pub size_of_info: usize,
+    /// Physical address of the linear framebuffer.
+    pub frame_buffer_base: u64,
+    /// Size of the framebuffer in bytes.
+    pub frame_buffer_size: usize,
+}
+
+/// `EFI_GRAPHICS_OUTPUT_MODE_INFORMATION`.
+#[repr(C)]
+pub struct GraphicsOutputModeInfo {
+    /// Structure version.
+    pub version: u32,
+    /// Visible width in pixels.
+    pub horizontal_resolution: u32,
+    /// Visible height in pixels.
+    pub vertical_resolution: u32,
+    /// `EFI_GRAPHICS_PIXEL_FORMAT`: 0 RGBX, 1 BGRX, 2 bit mask, 3 blt only.
+    pub pixel_format: u32,
+    /// Masks, used only with the bit-mask format.
+    pub pixel_information: [u32; 4],
+    /// Pixels from one row to the next.
+    pub pixels_per_scan_line: u32,
+}
+
+/// `EFI_CONFIGURATION_TABLE` entry.
+#[repr(C)]
+pub struct ConfigurationTable {
+    /// Identifies the table.
+    pub vendor_guid: Guid,
+    /// The table's address.
+    pub vendor_table: *mut c_void,
+}
+
+/// Returns the address of the configuration table entry with `guid`, if the
+/// firmware has one.
+///
+/// # Safety
+///
+/// `system_table` must be the live system table, and its configuration table
+/// must hold `number_of_table_entries` entries.
+pub unsafe fn find_configuration_table(
+    system_table: *const SystemTable,
+    guid: &Guid,
+) -> Option<*mut c_void> {
+    // SAFETY: the caller guarantees the table and its entries are live.
+    unsafe {
+        let count = (*system_table).number_of_table_entries;
+        let entries = (*system_table).configuration_table as *const ConfigurationTable;
+        if entries.is_null() {
+            return None;
+        }
+        (0..count)
+            .map(|index| &*entries.add(index))
+            .find(|entry| entry.vendor_guid == *guid)
+            .map(|entry| entry.vendor_table)
+    }
+}
+
 /// `EFI_TABLE_HEADER`.
 #[repr(C)]
 pub struct TableHeader {

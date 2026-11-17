@@ -17,15 +17,16 @@ use core::ptr;
 use core::slice;
 
 use tpt_k_boot_efi::{
-    allocate_pages, encode_path, exit_boot_services, get_memory_map, handle_protocol,
-    locate_handles, pages_for, stall, BootServices, Console, File, Handle, LoadedImage,
-    SimpleFileSystem, Status, SystemTable, ALLOCATE_ADDRESS, ALLOCATE_ANY_PAGES,
-    EFI_BUFFER_TOO_SMALL, EFI_INVALID_PARAMETER, EFI_SUCCESS, FILE_INFO_GUID, FILE_MODE_READ,
-    LOADED_IMAGE_GUID, LOADER_DATA, SIMPLE_FILE_SYSTEM_GUID,
+    allocate_pages, encode_path, exit_boot_services, find_configuration_table, get_memory_map,
+    handle_protocol, locate_handles, pages_for, stall, BootServices, Console, File, GraphicsOutput,
+    Handle, LoadedImage, SimpleFileSystem, Status, SystemTable, ACPI_20_TABLE_GUID,
+    ALLOCATE_ADDRESS, ALLOCATE_ANY_PAGES, EFI_BUFFER_TOO_SMALL, EFI_INVALID_PARAMETER, EFI_SUCCESS,
+    FILE_INFO_GUID, FILE_MODE_READ, GRAPHICS_OUTPUT_GUID, LOADED_IMAGE_GUID, LOADER_DATA,
+    SIMPLE_FILE_SYSTEM_GUID,
 };
 use tpt_k_boot_fs::elf::{Elf, ElfError};
 
-/// Handoff record for the kernel, passed in rdi. The layout is 40 bytes and is
+/// Handoff record for the kernel, passed in rdi. The layout is 80 bytes and is
 /// mirrored in `tpt-k-kernel-mem::bootmap`; the two must agree.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -36,11 +37,88 @@ struct BootInfo {
     map_phys: u64,
     map_bytes: u64,
     descriptor_size: u64,
+    rsdp_phys: u64,
+    fb_base: u64,
+    fb_size: u64,
+    fb_width: u32,
+    fb_height: u32,
+    fb_stride: u32,
+    fb_format: u32,
 }
 
 /// The record's magic and version.
 const BOOT_INFO_MAGIC: u64 = u64::from_le_bytes(*b"TPTKBOOT");
-const BOOT_INFO_VERSION: u32 = 1;
+const BOOT_INFO_VERSION: u32 = 2;
+
+/// Pixel formats, as `tpt-k-kernel-mem::bootmap::pixel_format` names them.
+const FB_NONE: u32 = 0;
+const FB_RGBX: u32 = 1;
+const FB_BGRX: u32 = 2;
+const FB_OTHER: u32 = 3;
+
+/// The framebuffer the loader found, or `None` if the firmware has no GOP.
+#[derive(Clone, Copy)]
+struct Framebuffer {
+    base: u64,
+    size: u64,
+    width: u32,
+    height: u32,
+    stride: u32,
+    format: u32,
+}
+
+/// Finds the first graphics output device and reads its current mode.
+///
+/// # Safety
+///
+/// `bs` must be live boot services.
+unsafe fn find_framebuffer(bs: *mut BootServices) -> Option<Framebuffer> {
+    // SAFETY: the caller guarantees live boot services. The protocol pointers
+    // come from firmware and stay valid while their handles do.
+    unsafe {
+        let mut handles = [ptr::null_mut(); 8];
+        let count = locate_handles(bs, &GRAPHICS_OUTPUT_GUID, &mut handles).ok()?;
+        for &handle in &handles[..count] {
+            let gop: *mut GraphicsOutput = match handle_protocol(bs, handle, &GRAPHICS_OUTPUT_GUID)
+            {
+                Ok(gop) => gop,
+                Err(_) => continue,
+            };
+            let mode = (*gop).mode;
+            if mode.is_null() {
+                continue;
+            }
+            let info = (*mode).info;
+            if info.is_null() || (*mode).frame_buffer_base == 0 {
+                continue;
+            }
+            let format = match (*info).pixel_format {
+                0 => FB_RGBX,
+                1 => FB_BGRX,
+                _ => FB_OTHER,
+            };
+            return Some(Framebuffer {
+                base: (*mode).frame_buffer_base,
+                size: (*mode).frame_buffer_size as u64,
+                width: (*info).horizontal_resolution,
+                height: (*info).vertical_resolution,
+                stride: (*info).pixels_per_scan_line,
+                format,
+            });
+        }
+        None
+    }
+}
+
+/// The framebuffer fields of a record that has none.
+const NO_FRAMEBUFFER: Framebuffer = Framebuffer {
+    base: 0,
+    size: 0,
+    width: 0,
+    height: 0,
+    stride: 0,
+    format: FB_NONE,
+};
 
 /// Kernel image path on the boot volume (8.3 names, so FAT needs no long names).
 const KERNEL_PATH: &str = "TPTK\\KERNEL.ELF";
@@ -264,6 +342,13 @@ unsafe fn load_and_jump(
             "tpt-k boot: entry {entry:#x}, leaving boot services"
         );
 
+        // Firmware facts the kernel cannot read once boot services are gone. Both
+        // are optional: a missing RSDP or GOP is recorded as zero, not a failure.
+        // Neither lookup allocates, so the map key below stays valid.
+        let rsdp_phys = find_configuration_table(system_table, &ACPI_20_TABLE_GUID)
+            .map_or(0, |table| table as u64);
+        let framebuffer = find_framebuffer(bs).unwrap_or(NO_FRAMEBUFFER);
+
         // The memory map. Allocate its buffer before the final read, because an
         // allocation after `GetMemoryMap` makes the key stale.
         let (probe_status, probe) = get_memory_map(bs, &mut []);
@@ -302,6 +387,13 @@ unsafe fn load_and_jump(
             map_phys: map_addr,
             map_bytes: map_info.size as u64,
             descriptor_size: map_info.descriptor_size as u64,
+            rsdp_phys,
+            fb_base: framebuffer.base,
+            fb_size: framebuffer.size,
+            fb_width: framebuffer.width,
+            fb_height: framebuffer.height,
+            fb_stride: framebuffer.stride,
+            fb_format: framebuffer.format,
         });
 
         // Boot services are gone: no console output from here on. The kernel
