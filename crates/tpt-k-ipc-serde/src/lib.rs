@@ -23,6 +23,9 @@
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod fuzz_tests;
+
 /// Frame magic: the bytes `TPTK`.
 pub const MAGIC: [u8; 4] = *b"TPTK";
 /// The only frame version this crate reads or writes.

@@ -12,6 +12,9 @@
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod fuzz_tests;
+
 /// Descriptor type codes.
 pub mod kind {
     /// Device descriptor.

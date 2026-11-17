@@ -16,6 +16,9 @@
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod fuzz_tests;
+
 /// Page size that segment placement is checked against, in bytes.
 pub const PAGE_SIZE: u64 = 4096;
 /// Most `PT_LOAD` segments a plan can hold.

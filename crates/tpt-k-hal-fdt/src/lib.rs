@@ -10,6 +10,9 @@
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod fuzz_tests;
+
 const MAGIC: u32 = 0xD00D_FEED;
 const HEADER_LEN: usize = 40;
 const TOKEN_BEGIN_NODE: u32 = 1;

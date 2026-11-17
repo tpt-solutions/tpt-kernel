@@ -9,4 +9,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- Deterministic mutation tests cover the frame decoder, including repaired checksums.
 - Framed messages: a 16-byte header, 64-bit words and a payload, checked with CRC-32C. Words are read in place without copying. The checksum is scalar; the `tpt-simd` path is not used yet.

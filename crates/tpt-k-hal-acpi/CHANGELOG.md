@@ -9,4 +9,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- Deterministic mutation tests cover the RSDP, system table, MADT and MCFG parsers.
 - RSDP and table-list parsing, the MADT (local APICs, I/O APICs, interrupt overrides, x2APIC) and the MCFG ECAM windows. Every table is checked for its signature, length and checksum. DSDT and SSDT AML is not parsed yet, and there is no fuzzing yet.

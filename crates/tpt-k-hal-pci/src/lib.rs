@@ -14,6 +14,9 @@
 #[cfg(test)]
 extern crate std;
 
+#[cfg(test)]
+mod fuzz_tests;
+
 /// Vendor ID that reads back when no function is present.
 pub const VENDOR_NONE: u16 = 0xFFFF;
 
