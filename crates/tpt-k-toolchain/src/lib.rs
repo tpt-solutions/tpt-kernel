@@ -14,6 +14,7 @@
 //! targets that back them.
 
 pub mod assurance;
+pub mod caps;
 pub mod doctor;
 pub mod runner;
 

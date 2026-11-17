@@ -73,3 +73,43 @@ fn doctor_prints_a_report_whatever_the_machine_has() {
         "{text}"
     );
 }
+
+fn sample_manifest() -> String {
+    format!(
+        "{}/../tpt-k-root-manifest/examples/shell.toml",
+        env!("CARGO_MANIFEST_DIR")
+    )
+}
+
+#[test]
+fn lint_manifest_prints_the_grants_and_flags_delegation() {
+    let out = build(&["lint-manifest", "--manifest", &sample_manifest()]);
+    // The sample grants `grant` to one process, so the lint has a finding.
+    assert_eq!(out.status.code(), Some(1));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        stdout.contains("grant shell -> console: read, write"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("finding: process `loader` on `config`"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn lint_manifest_refuses_a_grant_above_the_ceiling() {
+    let dir = std::env::temp_dir().join(format!("tpt-k-lint-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("bad.toml");
+    std::fs::write(
+        &path,
+        "[objects.c]\nrights = [\"read\"]\n[[process]]\nname = \"p\"\ngrants = [ { object = \"c\", rights = [\"read\", \"write\"] } ]\n",
+    )
+    .unwrap();
+    let out = build(&["lint-manifest", "--manifest", path.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert!(stderr.contains("asks for `write` on `c`"), "{stderr}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

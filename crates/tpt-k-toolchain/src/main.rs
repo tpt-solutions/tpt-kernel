@@ -19,7 +19,7 @@ const USAGE: &str = "\
 tpt-k-build: plan the cargo commands for the tpt-k workspace.
 
 USAGE:
-    tpt-k-build <plan|check|image|run|assure|doctor|help> [--metadata <file|->] [--fixture <a,b,...>]
+    tpt-k-build <plan|check|image|run|caps|replay|lint-manifest|assure|doctor|help> [--metadata <file|->] [--fixture <a,b,...>]
                         [--graph <file>] [--root <dir>] [--report <file>]
 
 COMMANDS:
@@ -30,6 +30,15 @@ COMMANDS:
              under target/tpt-k/esp (run from the repo root)
     run      do `image --run`, then boot it in QEMU with the serial port on
              this terminal
+    lint-manifest
+             parse and compile the policy manifest (--manifest <file>), check each
+             grant against its object's ceiling, and lint it; exit 1 on a refused
+             manifest or on any finding
+    replay   build and boot the image on QEMU's instruction counter, so the run
+             is repeatable; compare its serial transcript with --golden <file>,
+             or write it as the golden trace with --record <file>
+    caps     read the kernel's capability dump (`cap:` lines) from --serial
+             <file|->, and print the graph; --format text (default) or dot
     assure   check the assurance graph; exit 1 if the gate fails
     doctor   check the toolchain, targets, QEMU, OVMF, sibling repos and the
              git hooks path, and print the fix for each problem; run it from
@@ -44,6 +53,8 @@ OPTIONS:
     --root <dir>         repository root the evidence paths are relative to
                          (default: the current directory)
     --report <file>      also write the Markdown report to this file
+    --html <file>        also write the assurance dashboard (one static HTML page)
+                         to this file; `assure --html` is the dashboard
 
 `plan` and `check` never run cargo: the plan is printed for you to run, or to
 pipe to a shell. `image` prints the steps only, unless `--run` is given. Only
@@ -130,6 +141,9 @@ fn run(args: &[String]) -> Result<String, Failure> {
         "check" => Ok(planned(&options, Subcommand::Check)?.render()),
         "assure" => assure(&options),
         "doctor" => doctor_report(),
+        "caps" => caps_report(&options),
+        "lint-manifest" => lint_manifest_report(&options),
+        "replay" => replay_report(&options),
         other => Err(Failure::Usage(format!("unknown command `{other}`"))),
     }
 }
@@ -138,6 +152,27 @@ fn run(args: &[String]) -> Result<String, Failure> {
 /// `target/tpt-k/esp`, and, if `launch`, boots it in QEMU with the serial port on
 /// this terminal's standard streams. Runs from the repo root.
 fn assemble_image(launch: bool) -> Result<String, Failure> {
+    let (_root, plan) = build_and_stage()?;
+    let mut text = format!("image staged in {}\n", runner::esp_dir(&plan).display());
+    if !launch {
+        return Ok(text);
+    }
+    let qemu_run = qemu_for(&plan, runner::Serial::Stdio, false)?;
+    eprintln!("tpt-k-build: booting in QEMU (serial on this terminal; Ctrl-A X quits)");
+    let status = Command::new(&qemu_run.qemu)
+        .args(runner::qemu_args(&qemu_run))
+        .status()
+        .map_err(|e| Failure::Io(format!("cannot start QEMU: {e}")))?;
+    text.push_str(&match status.code() {
+        Some(code) => format!("QEMU exited with status {code}\n"),
+        None => "QEMU was stopped by a signal\n".to_string(),
+    });
+    Ok(text)
+}
+
+/// Builds the kernel and the loader from the repo root, and stages the ESP. Returns
+/// the root and the plan.
+fn build_and_stage() -> Result<(PathBuf, runner::ImagePlan), Failure> {
     let root = std::env::current_dir().map_err(|e| Failure::Io(e.to_string()))?;
     if !root.join("rust-toolchain.toml").is_file() {
         return Err(Failure::Gate(
@@ -168,11 +203,12 @@ fn assemble_image(launch: bool) -> Result<String, Failure> {
         fs::copy(&file.src, &dest)
             .map_err(|e| Failure::Io(format!("copy {}: {e}", file.src.display())))?;
     }
-    let mut text = format!("image staged in {}\n", runner::esp_dir(&plan).display());
-    if !launch {
-        return Ok(text);
-    }
+    Ok((root, plan))
+}
 
+/// The QEMU settings for a staged `plan`: the binary and firmware found on this
+/// machine, and a fresh copy of the OVMF variables for this run.
+fn qemu_for(plan: &runner::ImagePlan, serial: Serial, icount: bool) -> Result<QemuRun, Failure> {
     let os = Os::current();
     let qemu = find_qemu(os)?;
     let ovmf_code = find_firmware("OVMF_CODE", runner::ovmf_candidates(os))?;
@@ -182,23 +218,52 @@ fn assemble_image(launch: bool) -> Result<String, Failure> {
     let ovmf_vars = plan.out.join("vars.fd");
     fs::copy(&ovmf_template, &ovmf_vars)
         .map_err(|e| Failure::Io(format!("copy {}: {e}", ovmf_template.display())))?;
-    let launch = QemuRun {
+    Ok(QemuRun {
         qemu,
         ovmf_code,
         ovmf_vars,
-        esp: runner::esp_dir(&plan),
-        serial: Serial::Stdio,
-    };
-    eprintln!("tpt-k-build: booting in QEMU (serial on this terminal; Ctrl-A X quits)");
-    let status = Command::new(&launch.qemu)
-        .args(runner::qemu_args(&launch))
-        .status()
-        .map_err(|e| Failure::Io(format!("cannot start QEMU: {e}")))?;
-    text.push_str(&match status.code() {
-        Some(code) => format!("QEMU exited with status {code}\n"),
-        None => "QEMU was stopped by a signal\n".to_string(),
-    });
-    Ok(text)
+        esp: runner::esp_dir(plan),
+        serial,
+        icount,
+    })
+}
+
+/// `replay`: builds and stages the image, boots it under QEMU on the instruction
+/// counter, and records the serial transcript (`--record <file>`) or compares it with
+/// a golden trace (`--golden <file>`). With the instruction counter the transcript is
+/// the same on every run, so any difference is a change in the kernel or the loader.
+fn replay_report(options: &Options) -> Result<String, Failure> {
+    let (_root, plan) = build_and_stage()?;
+    let qemu_run = qemu_for(&plan, Serial::Stdio, true)?;
+    eprintln!("tpt-k-build: replaying on the instruction counter (this takes a while)");
+    let outcome =
+        runner::capture(&qemu_run, std::time::Duration::from_secs(300)).map_err(Failure::Gate)?;
+    if outcome.status != Some(33) {
+        return Err(Failure::Gate(format!(
+            "QEMU exited with status {:?}, expected 33 (the kernel's pass status)",
+            outcome.status
+        )));
+    }
+    let lines = outcome.transcript.lines().count();
+    if let Some(path) = &options.record {
+        fs::write(path, &outcome.transcript).map_err(|e| Failure::Io(format!("{path}: {e}")))?;
+        return Ok(format!("replay: recorded {lines} lines to {path}\n"));
+    }
+    let golden_path = options
+        .golden
+        .as_deref()
+        .ok_or_else(|| Failure::Usage("replay needs --golden <file> or --record <file>".into()))?;
+    let golden = fs::read_to_string(golden_path)
+        .map_err(|e| Failure::Io(format!("{golden_path}: {e}")))?
+        .replace('\r', "");
+    match runner::first_difference(&golden, &outcome.transcript) {
+        None => Ok(format!(
+            "replay: identical to {golden_path} ({lines} lines)\n"
+        )),
+        Some(difference) => Err(Failure::Gate(format!(
+            "replay differs from {golden_path}: {difference}"
+        ))),
+    }
 }
 
 /// The QEMU binary: `QEMU` if set, then `qemu-system-x86_64` on PATH, then the
@@ -235,6 +300,82 @@ fn find_firmware(var: &str, candidates: &[&str]) -> Result<PathBuf, Failure> {
         .map(PathBuf::from)
         .find(|p| p.is_file())
         .ok_or_else(|| Failure::Gate(format!("no firmware found; set {var}")))
+}
+
+/// `lint-manifest --manifest <file>`: parses the policy manifest, checks every grant
+/// against its object's ceiling, and lints it. Prints the grants that would be made.
+/// Exits 1 if the manifest is refused or if the lint has findings.
+fn lint_manifest_report(options: &Options) -> Result<String, Failure> {
+    use tpt_k_root_manifest as manifest;
+    let path = options
+        .manifest
+        .as_deref()
+        .ok_or_else(|| Failure::Usage("lint-manifest needs --manifest <file>".to_string()))?;
+    let text = fs::read_to_string(path).map_err(|e| Failure::Io(format!("{path}: {e}")))?;
+    let parsed = manifest::parse(&text).map_err(|e| Failure::Gate(e.to_string()))?;
+    let grants = manifest::compile(&parsed).map_err(|e| Failure::Gate(e.to_string()))?;
+    let mut out = String::new();
+    for grant in &grants {
+        out.push_str(&format!(
+            "grant {} -> {}: {}\n",
+            grant.process,
+            grant.object,
+            manifest::right_names(grant.rights).join(", ")
+        ));
+    }
+    let findings = manifest::lint(&parsed);
+    if findings.is_empty() {
+        out.push_str(&format!(
+            "lint-manifest: {} grant(s), no findings\n",
+            grants.len()
+        ));
+        return Ok(out);
+    }
+    for finding in &findings {
+        let who = if finding.process.is_empty() {
+            format!("object `{}`", finding.object)
+        } else {
+            format!("process `{}` on `{}`", finding.process, finding.object)
+        };
+        out.push_str(&format!("finding: {who}: {}\n", finding.message));
+    }
+    out.push_str(&format!(
+        "lint-manifest: {} finding(s) in {} grant(s)\n",
+        findings.len(),
+        grants.len()
+    ));
+    Err(Failure::Report(out))
+}
+
+/// `caps`: reads the kernel's capability dump from `--serial` (a file, or `-` for
+/// standard input) and prints the graph as text (the default) or DOT.
+fn caps_report(options: &Options) -> Result<String, Failure> {
+    let source = options
+        .serial
+        .as_deref()
+        .ok_or_else(|| Failure::Usage("caps needs --serial <file|->".to_string()))?;
+    let text = if source == "-" {
+        let mut text = String::new();
+        io::stdin()
+            .read_to_string(&mut text)
+            .map_err(|e| Failure::Io(format!("stdin: {e}")))?;
+        text
+    } else {
+        fs::read_to_string(source).map_err(|e| Failure::Io(format!("{source}: {e}")))?
+    };
+    let records = tpt_k_toolchain::caps::parse(&text).map_err(Failure::Gate)?;
+    if records.is_empty() {
+        return Err(Failure::Gate(
+            "no `cap:` lines in the input; did the kernel print its capability dump?".to_string(),
+        ));
+    }
+    match options.format.as_deref().unwrap_or("text") {
+        "text" => Ok(tpt_k_toolchain::caps::render_text(&records)),
+        "dot" => Ok(tpt_k_toolchain::caps::render_dot(&records)),
+        other => Err(Failure::Usage(format!(
+            "unknown format `{other}`; use text or dot"
+        ))),
+    }
 }
 
 /// Probes this machine for each check, and renders the report.
@@ -444,6 +585,10 @@ fn assure(options: &Options) -> Result<String, Failure> {
     let claims = assurance::parse(&text).map_err(|e| Failure::Gate(format!("graph: {e}")))?;
     let report = assurance::evaluate(&claims, Path::new(root));
     let markdown = report.render();
+    if let Some(path) = &options.html {
+        std::fs::write(path, report.render_html())
+            .map_err(|e| Failure::Io(format!("writing `{path}`: {e}")))?;
+    }
     if let Some(path) = &options.report {
         std::fs::write(path, &markdown)
             .map_err(|e| Failure::Io(format!("writing `{path}`: {e}")))?;
@@ -470,6 +615,18 @@ struct Options {
     report: Option<String>,
     /// `image --run`: build and stage the image, instead of only printing the steps.
     run: bool,
+    /// `caps --serial <file|->`: the kernel's serial transcript, `-` for stdin.
+    serial: Option<String>,
+    /// `caps --format <text|dot>`.
+    format: Option<String>,
+    /// `assure --html <file>`: also write the dashboard page.
+    html: Option<String>,
+    /// `replay --golden <file>`: the trace to compare with.
+    golden: Option<String>,
+    /// `lint-manifest --manifest <file>`: the policy manifest to check.
+    manifest: Option<String>,
+    /// `replay --record <file>`: write the transcript as the new golden trace.
+    record: Option<String>,
 }
 
 fn next_value<'a>(
@@ -502,6 +659,12 @@ fn parse_options(args: &[String]) -> Result<Options, Failure> {
             "--root" => options.root = Some(next_value(&mut iter, "--root")?),
             "--report" => options.report = Some(next_value(&mut iter, "--report")?),
             "--run" => options.run = true,
+            "--serial" => options.serial = Some(next_value(&mut iter, "--serial")?),
+            "--format" => options.format = Some(next_value(&mut iter, "--format")?),
+            "--html" => options.html = Some(next_value(&mut iter, "--html")?),
+            "--golden" => options.golden = Some(next_value(&mut iter, "--golden")?),
+            "--manifest" => options.manifest = Some(next_value(&mut iter, "--manifest")?),
+            "--record" => options.record = Some(next_value(&mut iter, "--record")?),
             other => return Err(Failure::Usage(format!("unknown option `{other}`"))),
         }
     }

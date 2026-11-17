@@ -14,6 +14,8 @@ publish = false
 [dependencies]
 # Reads `cargo metadata` output. Already in Cargo.lock, through tpt-primitives.
 serde_json = "1"
+# Compiles and lints the policy manifest for `lint-manifest`.
+tpt-k-root-manifest = { path = "../tpt-k-root-manifest" }
 
 [[bin]]
 name = "tpt-k-build"

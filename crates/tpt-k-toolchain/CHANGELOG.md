@@ -9,6 +9,12 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- `image` (with `--run`), `run`: build the kernel and loader, stage the ESP under `target/tpt-k/esp`, and boot it in QEMU with serial on stdio.
+- `caps --serial <file|-> [--format text|dot]`: the capability inspector.
+- `lint-manifest --manifest <file>`: compiles and lints a policy manifest (`tpt-k-root-manifest`).
+- `replay --record <file>` and `replay --golden <file>`: boot on the instruction counter and compare the transcript. Not yet repeatable, see `todo.md`.
+- `assure --html <file>`: the assurance dashboard, as one static page.
+
 - `tpt-k-build doctor`: probes the Rust toolchain (pinned 1.95.0), the targets, QEMU, OVMF, the sibling repos and `core.hooksPath`. Prints `ok`, `warn` or `FAIL` per check with the fix commands for Windows or Linux. Exits 1 if a required check fails. The report logic is in `doctor.rs` and is host-tested.
 
 - Planner: layer lookup from crate name prefixes, targets per layer (kernel: `x86_64-unknown-none`, boot: `x86_64-unknown-uefi`, others: host), and deterministic plans of cargo build or check commands.

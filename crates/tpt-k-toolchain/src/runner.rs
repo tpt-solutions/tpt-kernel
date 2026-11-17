@@ -142,6 +142,108 @@ pub struct QemuRun {
     /// The staged ESP directory.
     pub esp: PathBuf,
     pub serial: Serial,
+    /// Run on QEMU's instruction counter instead of host time, so that two runs of
+    /// the same image give the same serial transcript. Used for replay.
+    pub icount: bool,
+}
+
+/// What one QEMU run produced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QemuOutcome {
+    /// QEMU's exit status. The kernel's debug exit makes it `(value << 1) | 1`.
+    pub status: Option<i32>,
+    /// Everything QEMU wrote to standard output, with `\r` removed.
+    pub transcript: String,
+}
+
+/// Starts QEMU with its serial port on standard output, and waits for it.
+///
+/// The transcript comes from the pipe, not from a file. Writing the serial port to
+/// a file dropped kernel output on this host, so a transcript read from a file was
+/// incomplete. The pipe carries every byte the kernel sends. Fails after `timeout`,
+/// when QEMU is killed. `launch.serial` is ignored: the transcript is always read
+/// from stdout, so `Serial::Stdio` is what runs.
+///
+/// # Errors
+///
+/// Returns a message if QEMU cannot start, or does not finish in time.
+pub fn capture(launch: &QemuRun, timeout: std::time::Duration) -> Result<QemuOutcome, String> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
+
+    let mut args = qemu_args(launch);
+    // The serial port goes to stdout, whatever `launch.serial` says.
+    if let Some(at) = args.iter().position(|a| a == "-serial") {
+        args[at + 1] = "stdio".to_string();
+    }
+    let mut child = Command::new(&launch.qemu)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("cannot start QEMU: {e}"))?;
+    let mut stdout = child.stdout.take().ok_or("no QEMU stdout")?;
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = stdout.read_to_end(&mut bytes);
+        bytes
+    });
+    let started = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status.code();
+        }
+        if started.elapsed() > timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("QEMU did not finish within {}s", timeout.as_secs()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let bytes = reader.join().unwrap_or_default();
+    Ok(QemuOutcome {
+        status,
+        transcript: String::from_utf8_lossy(&bytes).replace('\r', ""),
+    })
+}
+
+/// Masks the lines whose numbers come from host timing even on the instruction
+/// counter. The APIC timer is calibrated against the PIT, which runs on host time, so
+/// the count printed by the kernel changes from run to run by a few units. The line
+/// stays in the trace, with the number replaced by `<calibrated>`.
+#[must_use]
+pub fn normalize_line(line: &str) -> String {
+    if let Some(rest) = line.strip_prefix("apic: timer ") {
+        if let Some((_, tail)) = rest.split_once(' ') {
+            return format!("apic: timer <calibrated> {tail}");
+        }
+    }
+    line.to_string()
+}
+
+/// The first line where `actual` differs from `golden`, described for a person, or
+/// `None` if they are the same. Lines are compared after [`normalize_line`]. A
+/// transcript that is only longer or shorter also differs, at the first line one of
+/// them does not have.
+#[must_use]
+pub fn first_difference(golden: &str, actual: &str) -> Option<String> {
+    let mut g = golden.lines();
+    let mut a = actual.lines();
+    let mut line = 1;
+    loop {
+        match (g.next(), a.next()) {
+            (None, None) => return None,
+            (Some(x), Some(y)) if normalize_line(x) == normalize_line(y) => line += 1,
+            (x, y) => {
+                return Some(format!(
+                    "line {line}: golden has {:?}, this run has {:?}",
+                    x.unwrap_or("<end of trace>"),
+                    y.unwrap_or("<end of transcript>")
+                ))
+            }
+        }
+    }
 }
 
 /// The QEMU command line for `run`. Windows paths are handled by the caller.
@@ -151,7 +253,7 @@ pub fn qemu_args(run: &QemuRun) -> Vec<String> {
         Serial::Stdio => "stdio".to_string(),
         Serial::File(path) => format!("file:{}", path.display()),
     };
-    vec![
+    let mut args: Vec<String> = vec![
         "-machine".into(),
         "q35".into(),
         "-m".into(),
@@ -173,7 +275,18 @@ pub fn qemu_args(run: &QemuRun) -> Vec<String> {
         format!("file=fat:rw:{},format=raw,media=disk", run.esp.display()),
         "-device".into(),
         "isa-debug-exit,iobase=0xf4,iosize=0x04".into(),
-    ]
+    ];
+    if run.icount {
+        // The RTC follows the virtual clock too. Otherwise its interrupts follow
+        // host time, and the order in which the demo threads finish changes.
+        args.extend([
+            "-icount".into(),
+            "shift=auto,sleep=off".into(),
+            "-rtc".into(),
+            "clock=vm".into(),
+        ]);
+    }
+    args
 }
 
 /// Where to look for OVMF code images, first match wins. Environment variable
@@ -208,6 +321,52 @@ pub fn ovmf_vars_candidates(os: Os) -> &'static [&'static str] {
 
 /// The default install folder of QEMU on Windows.
 pub const WINDOWS_QEMU: &str = r"C:\Program Files\qemu\qemu-system-x86_64.exe";
+
+#[cfg(test)]
+mod replay_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_calibrated_timer_count_is_masked() {
+        assert_eq!(
+            normalize_line("apic: timer 624973 counts per 10 ms"),
+            "apic: timer <calibrated> counts per 10 ms"
+        );
+        assert_eq!(
+            normalize_line("preempt: ticks=5 timer switches=3"),
+            "preempt: ticks=5 timer switches=3"
+        );
+    }
+
+    #[test]
+    fn identical_transcripts_have_no_difference() {
+        let text = "Hello tpt-k\napic: timer 1 counts per 10 ms\nscheduler: ok\n";
+        let other = "Hello tpt-k\napic: timer 2 counts per 10 ms\nscheduler: ok\n";
+        assert_eq!(first_difference(text, other), None);
+    }
+
+    #[test]
+    fn the_first_changed_line_is_named_with_both_sides() {
+        let golden = "a\nb\nc\n";
+        let actual = "a\nX\nc\n";
+        let message = first_difference(golden, actual).unwrap();
+        assert!(message.starts_with("line 2:"), "{message}");
+        assert!(
+            message.contains("\"b\"") && message.contains("\"X\""),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn a_shorter_or_longer_transcript_differs_at_the_extra_line() {
+        assert!(first_difference("a\nb\n", "a\n")
+            .unwrap()
+            .contains("<end of transcript>"));
+        assert!(first_difference("a\n", "a\nb\n")
+            .unwrap()
+            .contains("<end of trace>"));
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -266,6 +425,7 @@ mod tests {
             ovmf_vars: PathBuf::from("vars.fd"),
             esp: PathBuf::from("esp"),
             serial: Serial::Stdio,
+            icount: false,
         };
         let args = qemu_args(&run);
         assert!(args.windows(2).any(|w| w == ["-serial", "stdio"]));
