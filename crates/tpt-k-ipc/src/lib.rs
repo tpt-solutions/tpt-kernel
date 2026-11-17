@@ -376,3 +376,6 @@ mod tests {
         assert_eq!(status, Status::Full);
     }
 }
+
+#[cfg(test)]
+mod invariants;

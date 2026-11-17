@@ -511,3 +511,6 @@ mod prop_tests {
         assert_eq!(Token::from_bytes(&tampered), Err(TokenError::BadRights));
     }
 }
+
+#[cfg(test)]
+mod invariants;
