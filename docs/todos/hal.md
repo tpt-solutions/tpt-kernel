@@ -14,7 +14,7 @@ fuzz targets.
 ## Phase 3 — HAL
 
 - [x] `tpt-k-hal`: core hardware data structures (2026-11-17: MMIO regions, port ranges, IRQ lines and the conflict rule the root server checks; host-tested)
-- [ ] `tpt-k-hal-acpi`: MADT, MCFG, DSDT/SSDT parsing (partly, 2026-11-17: RSDP, RSDT/XSDT, MADT and MCFG are parsed and host-tested; DSDT/SSDT AML is open)
+- [ ] `tpt-k-hal-acpi`: MADT, MCFG, DSDT/SSDT parsing (partly, 2026-11-17: RSDP, RSDT/XSDT, MADT and MCFG are parsed and host-tested; the AML walker finds devices with _HID and _ADR, skipping method bodies; no OperationRegion, method evaluation or real firmware tables yet)
 - [x] `tpt-k-hal-pci`: PCIe config space enumeration + BAR parsing (2026-11-17: enumeration over a caller-supplied `ConfigAccess`; BAR decoding and sizing with decoding switched off; host-tested. Bridges are not followed)
 - [ ] Unit and fuzz tests for each parser against real-world table dumps (partly, 2026-11-17: synthetic-table unit tests for every parser; fuzz targets and real dumps are open)
 
