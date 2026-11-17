@@ -10,3 +10,4 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 ### Added
 
 - Stub crate for the AArch64 architecture layer.
+- Removed from the CI `tcb-nostd` group, since it has no code to check. It is added back when it has code.

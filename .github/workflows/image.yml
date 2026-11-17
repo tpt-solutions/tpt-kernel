@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: MIT OR Apache-2.0
+#
+# Builds the bootable boot image (the EFI System Partition with the loader and
+# the kernel) on every push to master, and uploads it as an artifact. Booting it
+# is the QEMU smoke test's job (qemu-smoke.yml). Tagged-release attachment waits
+# for the release decision in docs/release.md.
+name: Boot image
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # tpt-k-ipc-cap uses tpt-primitives by path, so the sibling checkout must
+      # exist before cargo reads any manifest (as in reusable-ci.yml).
+      - name: Fetch sibling tpt-primitives (path dependency)
+        run: git clone --depth 1 https://github.com/tpt-solutions/tpt-primitives.git "$GITHUB_WORKSPACE/../tpt-primitives"
+
+      - name: Show pinned toolchain
+        run: rustup show
+
+      - name: Build the boot image
+        run: cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- image --run
+
+      - name: Upload the boot image
+        uses: actions/upload-artifact@v4
+        with:
+          name: tpt-k-boot-image
+          path: target/tpt-k/esp
+          if-no-files-found: error
+          retention-days: 30

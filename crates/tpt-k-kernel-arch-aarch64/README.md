@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Stub. The crate builds, but the AArch64 primitives are not implemented yet.
+Stub. The crate builds, but the AArch64 primitives are not implemented yet. It has no code, so it is not in the CI `tcb-nostd` group (`.github/workflows/ci.yml`); it is added back there when it has code to check.
 
 ## License
 

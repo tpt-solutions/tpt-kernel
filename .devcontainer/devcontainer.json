@@ -1,0 +1,16 @@
+{
+  "name": "tpt-kernel",
+  "build": { "dockerfile": "Dockerfile" },
+  "workspaceFolder": "/workspaces/tpt-kernel",
+  "customizations": {
+    "vscode": {
+      "extensions": ["rust-lang.rust-analyzer"]
+    }
+  },
+  "remoteEnv": {
+    "OVMF_CODE": "/usr/share/OVMF/OVMF_CODE_4M.fd",
+    "OVMF_VARS": "/usr/share/OVMF/OVMF_VARS_4M.fd"
+  },
+  "postCreateCommand": "cargo xtask fetch-deps /workspaces && cargo install --path /workspaces/tpt-cargo-vitals --locked || echo 'tpt-cargo-vitals not installed: the license gate will be skipped'",
+  "remoteUser": "root"
+}

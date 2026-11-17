@@ -18,7 +18,7 @@ jobs:
       target: x86_64-unknown-none
       packages: >-
         -p tpt-k-kernel-mem -p tpt-k-kernel-sched -p tpt-k-kernel-ipc
-        -p tpt-k-kernel-arch-x86_64 -p tpt-k-kernel-arch-aarch64
+        -p tpt-k-kernel-arch-x86_64
         -p tpt-k-hal -p tpt-k-hal-acpi -p tpt-k-hal-fdt -p tpt-k-hal-pci -p tpt-k-hal-usb
         -p tpt-k-ipc-cap -p tpt-k-ipc-serde
       # Host tests for the TCB crates. The bare-metal target has no test
@@ -27,12 +27,12 @@ jobs:
       run_tests: true
       test_packages: >-
         -p tpt-k-kernel-mem -p tpt-k-kernel-sched -p tpt-k-kernel-ipc
-        -p tpt-k-kernel-arch-x86_64 -p tpt-k-kernel-arch-aarch64
+        -p tpt-k-kernel-arch-x86_64
         -p tpt-k-ipc-cap -p tpt-k-ipc-serde
       tcb_checks: true
       nostd_crates: >-
         tpt-k-kernel-mem tpt-k-kernel-sched tpt-k-kernel-ipc
-        tpt-k-kernel-arch-x86_64 tpt-k-kernel-arch-aarch64
+        tpt-k-kernel-arch-x86_64
         tpt-k-hal tpt-k-hal-acpi tpt-k-hal-fdt tpt-k-hal-pci tpt-k-hal-usb
         tpt-k-ipc-cap tpt-k-ipc-serde
 
