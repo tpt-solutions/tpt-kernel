@@ -19,7 +19,7 @@ extern crate std;
 pub mod lifecycle;
 
 #[cfg(test)]
-mod fuzz_tests;
+mod mutation_tests;
 
 /// Page size that segment placement is checked against, in bytes.
 pub const PAGE_SIZE: u64 = 4096;

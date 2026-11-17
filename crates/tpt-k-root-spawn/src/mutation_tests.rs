@@ -95,7 +95,7 @@ fn mutate(rng: &mut Rng, base: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-fn fuzz_elf_planner_never_panics() {
+fn mutation_elf_planner_never_panics() {
     let base = sample();
     assert!(plan(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x7E57_E1F0_0000_0005);
@@ -114,7 +114,7 @@ fn fuzz_elf_planner_never_panics() {
 }
 
 #[test]
-fn fuzz_random_images_never_panic() {
+fn mutation_random_images_never_panic() {
     let mut rng = Rng(0x0BAD_E1F0_0000_0006);
     for _ in 0..ITERATIONS {
         let n = rng.below(1024);

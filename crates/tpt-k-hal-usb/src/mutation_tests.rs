@@ -83,7 +83,7 @@ fn device_sample() -> Vec<u8> {
 }
 
 #[test]
-fn fuzz_configuration_and_descriptors_never_panic() {
+fn mutation_configuration_and_descriptors_never_panic() {
     let base = configuration_sample();
     assert!(Configuration::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x1111_2222_3333_4444);
@@ -115,7 +115,7 @@ fn fuzz_configuration_and_descriptors_never_panic() {
 }
 
 #[test]
-fn fuzz_device_and_leaf_descriptors_never_panic() {
+fn mutation_device_and_leaf_descriptors_never_panic() {
     let base = device_sample();
     assert!(Device::parse(&base).is_ok(), "sample must be valid");
     let endpoint = [7u8, 5, 0x81, 0x03, 8, 0, 10];

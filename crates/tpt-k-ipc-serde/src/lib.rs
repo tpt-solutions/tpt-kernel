@@ -24,7 +24,7 @@
 extern crate std;
 
 #[cfg(test)]
-mod fuzz_tests;
+mod mutation_tests;
 
 /// Frame magic: the bytes `TPTK`.
 pub const MAGIC: [u8; 4] = *b"TPTK";

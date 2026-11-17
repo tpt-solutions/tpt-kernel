@@ -43,7 +43,7 @@ impl ConfigAccess for RandomConfig {
 }
 
 #[test]
-fn fuzz_bar_decode_and_size_never_panic() {
+fn mutation_bar_decode_and_size_never_panic() {
     let mut rng = Rng(0x0BAD_5EED_0000_0001);
     for _ in 0..ITERATIONS {
         let low = rng.next() as u32;
@@ -65,7 +65,7 @@ fn fuzz_bar_decode_and_size_never_panic() {
 }
 
 #[test]
-fn fuzz_enumerate_and_probe_never_panic() {
+fn mutation_enumerate_and_probe_never_panic() {
     let mut rng = Rng(0x0C0F_FEE0_0000_0002);
     for _ in 0..ITERATIONS {
         let mut access = RandomConfig { seed: rng.next() };

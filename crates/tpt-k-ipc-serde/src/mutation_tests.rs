@@ -84,7 +84,7 @@ fn repair_checksum(v: &mut [u8]) {
 }
 
 #[test]
-fn fuzz_decode_and_frame_access_never_panic() {
+fn mutation_decode_and_frame_access_never_panic() {
     let mut buf = [0u8; 128];
     let n = encode(
         &mut buf,
@@ -119,7 +119,7 @@ fn fuzz_decode_and_frame_access_never_panic() {
 }
 
 #[test]
-fn fuzz_random_inputs_never_panic() {
+fn mutation_random_inputs_never_panic() {
     let mut rng = Rng(0x0DDB_A110_0000_0004);
     for _ in 0..ITERATIONS {
         let n = rng.below(300);

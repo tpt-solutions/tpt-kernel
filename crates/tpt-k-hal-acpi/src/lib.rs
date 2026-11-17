@@ -17,7 +17,7 @@ extern crate std;
 pub mod aml;
 
 #[cfg(test)]
-mod fuzz_tests;
+mod mutation_tests;
 
 /// Length of the common header that starts every system description table.
 pub const SDT_HEADER_LEN: usize = 36;

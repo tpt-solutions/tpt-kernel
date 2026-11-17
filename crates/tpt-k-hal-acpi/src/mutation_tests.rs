@@ -173,7 +173,7 @@ fn rsdp_sample() -> Vec<u8> {
 }
 
 #[test]
-fn fuzz_rsdp_never_panics() {
+fn mutation_rsdp_never_panics() {
     let base = rsdp_sample();
     assert!(Rsdp::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
@@ -187,7 +187,7 @@ fn fuzz_rsdp_never_panics() {
 }
 
 #[test]
-fn fuzz_sdt_and_root_tables_never_panic() {
+fn mutation_sdt_and_root_tables_never_panic() {
     let bases = [xsdt_sample(), rsdt_sample()];
     assert!(
         bases.iter().all(|b| Sdt::parse(b).is_ok()),
@@ -210,7 +210,7 @@ fn fuzz_sdt_and_root_tables_never_panic() {
 }
 
 #[test]
-fn fuzz_madt_entries_never_panic() {
+fn mutation_madt_entries_never_panic() {
     let base = madt_sample();
     assert!(Madt::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0xDEAD_BEEF_CAFE_F00D);
@@ -230,7 +230,7 @@ fn fuzz_madt_entries_never_panic() {
 }
 
 #[test]
-fn fuzz_mcfg_entries_never_panic() {
+fn mutation_mcfg_entries_never_panic() {
     let base = mcfg_sample();
     assert!(Mcfg::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x5EED_5EED_5EED_5EED);

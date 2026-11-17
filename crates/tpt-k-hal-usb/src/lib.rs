@@ -13,7 +13,7 @@
 extern crate std;
 
 #[cfg(test)]
-mod fuzz_tests;
+mod mutation_tests;
 
 /// Descriptor type codes.
 pub mod kind {

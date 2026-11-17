@@ -11,7 +11,7 @@
 extern crate std;
 
 #[cfg(test)]
-mod fuzz_tests;
+mod mutation_tests;
 
 const MAGIC: u32 = 0xD00D_FEED;
 const HEADER_LEN: usize = 40;

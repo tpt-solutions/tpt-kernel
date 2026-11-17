@@ -147,7 +147,7 @@ fn sample() -> Vec<u8> {
 }
 
 #[test]
-fn fuzz_fdt_surface_never_panics() {
+fn mutation_fdt_surface_never_panics() {
     let base = sample();
     assert!(Fdt::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0xA5A5_1234_9876_0001);
@@ -191,7 +191,7 @@ fn fuzz_fdt_surface_never_panics() {
 }
 
 #[test]
-fn fuzz_reg_iter_never_panics() {
+fn mutation_reg_iter_never_panics() {
     let mut rng = Rng(0x0F0F_F0F0_1357_9BDF);
     for _ in 0..ITERATIONS {
         let n = rng.below(65);
