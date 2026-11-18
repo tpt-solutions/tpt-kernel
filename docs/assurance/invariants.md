@@ -24,7 +24,8 @@ Read a status this way:
 
 These are the tests `bounded_exhaustive_capability_invariants`,
 `derive_accepts_exactly_grantable_subsets` and `bounded_exhaustive_endpoint_invariants`.
-Each asserts a minimum number of explored steps, so an empty search cannot pass.
+The two exhaustive searches assert a minimum number of explored steps, so an
+empty search cannot pass.
 
 ## Capability invariants (`crates/tpt-k-kernel-ipc/src/cap.rs`)
 
@@ -70,17 +71,36 @@ Each asserts a minimum number of explored steps, so an empty search cannot pass.
   rights masks, 4 opcodes (3 offered) and 2 keys, in
   `service_body_runs_exactly_when_token_is_valid_and_rights_allow`.
 
+## Rights, wait and parser claims
+
+- **RIGHTS-1** (`crates/tpt-k-kernel-ipc`, `crates/tpt-k-ipc-cap`, checked by
+  `docs/assurance/proofs/rights.py`): For rights words of up to 64 bits, derive
+  and grant never produce a right the source lacks, derive needs `GRANT`, and token
+  attenuation never widens. *Critical, bounded-proven.* This is a z3 proof of the
+  rights bit model, not of the Rust code. The gate reads the verdicts from
+  `rights.py.log` and fails unless each named property is `unsat` there.
+- **WAIT-1** (`crates/tpt-k-kernel`): A thread can wait only on a thread it
+  created. A wait returns the child's exit code, and a child the kernel ended after
+  a fault makes the wait fail with `Fault`. *Not critical, tested.* The evidence is
+  a boot self-test in the kernel, so it runs under QEMU.
+- **FUZZ-1** (the ACPI, FDT, PCI and USB parsers, and `tpt-k-ipc-serde`): The
+  parsers never panic on mutated input. *Not critical, tested.* The evidence is
+  seeded mutation campaigns of one million iterations per parser. The logs are in
+  `docs/assurance/campaigns/`. The campaigns are not coverage-guided.
+
 ## Not yet done
 
 - **Specification in `tpt-concord`.** These invariants are recorded here, not in
   the sibling `tpt-concord` repo. Its CLI is not built on this machine, and the
   integration is still open.
-- **Formal model and SMT/model checking.** The checks above are bounded
-  exhaustive searches over an executable model, not SMT or machine-checked
-  proofs. No prover is wired in.
-- **Coverage-guided fuzzing.** The fuzz campaigns (syscall interface, IPC serde,
-  parsers) are not run. `cargo-fuzz` needs a nightly Rust toolchain and a
-  sanitizer runtime, which this Windows machine does not have.
+- **Formal model and SMT/model checking.** The capability and endpoint checks
+  above are bounded exhaustive searches over an executable model, not proofs. The
+  only solver proof is RIGHTS-1, which covers the rights bit model and not the
+  Rust code. It is run by hand, and its verdicts are recorded in `rights.py.log`.
+- **Coverage-guided fuzzing.** The seeded mutation campaigns are run, but no
+  coverage-guided fuzzer is, and the syscall interface has no fuzz target.
+  `cargo-fuzz` needs a nightly Rust toolchain and a sanitizer runtime, which this
+  Windows machine does not have.
 - **TOK-1 (forgery and tampering)** is sampled only. The HMAC construction is
   not model-checked, and the checks use two keys.
 - **The kernel's own syscall dispatch** is not in the model. The model covers the
