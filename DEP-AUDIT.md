@@ -69,7 +69,7 @@ Results, with the policy allowlist, `--dev-allow Apache-2.0`, and the
 
 The sibling repos run `cargo-deny` in CI, not vitals. `cargo deny check` passes
 in primitives, simd, crypto, fabric, filesystem, mcpbox and crypto-rustls. vitals
-does not read `deny.toml`, so its CVE count still lists the accepted advisories.
+reads `deny.toml` as of `5571f3f`, so its CVE count matches the accepted list.
 
 `witx` is a normal dependency: `wasmtime-wasi` → `wiggle` → `wiggle-generate`
 → `wiggle-macro` (a proc macro, so it runs at build time and is not linked into
@@ -111,8 +111,11 @@ Checked with `cargo tree --target all -e all` on 2026-11-18.
    The `tpt-mcpbox` commits still need a manual push.
 3. Keep the dev-only acceptances in `tpt-crypto-rustls` until the test peer is
    replaced. They do not affect shipped code.
-4. Have vitals read `deny.toml` ignores, with their reasons, so the CVE count
-   agrees with cargo-deny. Not done; it is a vitals change.
+4. Done locally: vitals reads `[advisories] ignore` from `deny.toml` (`5571f3f`),
+   with the same reasons, so its CVE count agrees with cargo-deny. Accepted
+   advisories are listed and do not fail `--ci-mode`. Refresh the advisory cache
+   with `tpt-cargo-vitals update` before a check. The `rsa` finding seen on a
+   stale cache (2026-11-05) does not apply to rsa 0.10 under the current database.
 
 The CI gate in each repo still runs the old `tpt-cargo-vitals` flags, because
 CI installs vitals from GitHub. The new flags go into CI only after the vitals
