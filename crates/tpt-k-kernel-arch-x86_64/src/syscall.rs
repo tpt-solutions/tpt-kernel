@@ -128,7 +128,22 @@ unsafe extern "C" fn syscall_entry() {
         "mov rdx, rsi",
         "mov rsi, rdi",
         "mov rdi, rax",
+        // The handler may block, and another thread then runs. Its callee-saved
+        // registers are not ours, so the caller's rbx, rbp and r12 to r15 are saved
+        // here and restored after the call. Six pushes keep rsp 16-byte aligned.
+        "push rbx",
+        "push rbp",
+        "push r12",
+        "push r13",
+        "push r14",
+        "push r15",
         "call qword ptr [{handler}]",
+        "pop r15",
+        "pop r14",
+        "pop r13",
+        "pop r12",
+        "pop rbp",
+        "pop rbx",
         // Only rax carries the result. The other argument registers still hold
         // values the handler left, and those are kernel values, so clear them
         // before returning to ring 3. rcx and r11 are restored by sysretq.
