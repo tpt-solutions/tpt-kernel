@@ -229,11 +229,11 @@ fn evaluate_claim(claim: &Claim, root: &Path) -> Outcome {
                 if ev.kind == "proof" {
                     let log = std::fs::read_to_string(root.join(format!("{}.log", ev.path)))
                         .unwrap_or_default();
-                    if !log.lines().any(|line| line == format!("{}: unsat", ev.name)) {
-                        problems.push(format!(
-                            "no `{}: unsat` line in `{}.log`",
-                            ev.name, ev.path
-                        ));
+                    if !log
+                        .lines()
+                        .any(|line| line == format!("{}: unsat", ev.name))
+                    {
+                        problems.push(format!("no `{}: unsat` line in `{}.log`", ev.name, ev.path));
                     }
                 }
             }
@@ -649,8 +649,11 @@ mod tests {
 
     #[test]
     fn proof_without_a_recorded_unsat_fails_the_gate() {
-        let root = scratch("proof-missing", "fn check_all() {}
-");
+        let root = scratch(
+            "proof-missing",
+            "fn check_all() {}
+",
+        );
         let c = claim("P", true, &[("proof", "rights")], None);
         let r = evaluate_linked(&[c], &root);
         assert!(!r.passed());
@@ -659,10 +662,17 @@ mod tests {
 
     #[test]
     fn proof_with_a_recorded_unsat_passes_the_gate() {
-        let root = scratch("proof-recorded", "fn check_all() {}
-");
-        std::fs::write(root.join("lib.rs.log"), "rights: unsat
-").unwrap();
+        let root = scratch(
+            "proof-recorded",
+            "fn check_all() {}
+",
+        );
+        std::fs::write(
+            root.join("lib.rs.log"),
+            "rights: unsat
+",
+        )
+        .unwrap();
         let c = claim("P", true, &[("proof", "rights")], None);
         let r = evaluate_linked(&[c], &root);
         assert!(r.passed(), "{:?}", r.problems());
