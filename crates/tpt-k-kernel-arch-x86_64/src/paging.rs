@@ -157,6 +157,48 @@ impl<'a> PageTables<'a> {
         Ok(copy)
     }
 
+    /// Frees the tables of address space `root`, and returns how many tables were
+    /// freed. The frames the leaves map are not freed: a leaf may be shared with the
+    /// space `root` was forked from, so the owner of those frames frees them.
+    ///
+    /// Every table under a forked root is a copy made by `fork`, so each one belongs
+    /// to `root` alone. Huge pages are leaves and are left alone.
+    ///
+    /// # Errors
+    ///
+    /// [`PagingError::Unsupported`] if `root` is the boot space (index 0), is the
+    /// active root, or is not an allocated table.
+    pub fn release_root(&mut self, root: usize) -> Result<usize, PagingError> {
+        if root == 0 || root == self.root {
+            return Err(PagingError::Unsupported);
+        }
+        if root >= self.pool.len() {
+            return Err(PagingError::Unsupported);
+        }
+        self.release_table(root, 0)
+    }
+
+    fn release_table(&mut self, index: usize, depth: usize) -> Result<usize, PagingError> {
+        let mut freed = 0;
+        if depth < 3 {
+            for entry_index in 0..ENTRIES {
+                let entry = self.pool[index].0[entry_index];
+                if entry & PRESENT == 0 || entry & HUGE != 0 {
+                    continue;
+                }
+                let child = self.index_of(entry & ADDRESS_MASK)?;
+                freed += self.release_table(child, depth + 1)?;
+            }
+        }
+        let frame =
+            Frame::from_address(self.table_address(index)).ok_or(PagingError::Unsupported)?;
+        self.frames
+            .free(frame)
+            .map_err(|_| PagingError::Unsupported)?;
+        self.pool[index] = Table::EMPTY;
+        Ok(freed + 1)
+    }
+
     /// Identity maps the first `gigabytes` GiB (at most 512) with writable 2 MiB
     /// pages.
     ///
@@ -421,6 +463,33 @@ mod tests {
         let mut bits = [0u64; 1];
         let mut tables = PageTables::new(&mut pool, &mut bits).unwrap();
         assert_eq!(tables.select(3), Err(PagingError::Unsupported));
+    }
+
+    #[test]
+    fn releasing_a_fork_frees_its_tables_and_keeps_the_leaves() {
+        let mut pool = [Table::EMPTY; 16];
+        let mut bits = [0u64; 1];
+        let mut tables = PageTables::new(&mut pool, &mut bits).unwrap();
+        tables.identity_map(1).unwrap();
+        let free_before = tables.frames.free_frames();
+        let child = tables.fork().unwrap();
+        let free_after_fork = tables.frames.free_frames();
+        // The identity map uses 2 MiB pages, so a fork copies three tables: the root,
+        // the directory-pointer table and the directory. No page table yet.
+        assert_eq!(free_before - free_after_fork, 3);
+        tables.select(child).unwrap();
+        tables.map_4k(0x7000_0000, 0x40_0000, WRITABLE).unwrap();
+        tables.select(0).unwrap();
+        // The mapping lies in a second 1 GiB region, so it adds a directory and a
+        // page table. It does not split the 2 MiB pages: five tables in all.
+        assert_eq!(tables.release_root(child), Ok(5));
+        assert_eq!(tables.frames.free_frames(), free_before);
+        // The boot space and the active space are never released.
+        assert_eq!(tables.release_root(0), Err(PagingError::Unsupported));
+        assert_eq!(
+            tables.release_root(tables.root),
+            Err(PagingError::Unsupported)
+        );
     }
 
     #[test]
