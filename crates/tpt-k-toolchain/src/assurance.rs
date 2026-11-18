@@ -97,6 +97,8 @@ pub struct Outcome {
 pub struct Report {
     /// One outcome per claim, in graph order.
     pub outcomes: Vec<Outcome>,
+    /// `INV` lines in `spec.txt` that name no claim in the graph.
+    pub orphans: Vec<String>,
 }
 
 /// Parses the graph. Every claim needs an `id`, `layer`, `statement` and an
@@ -172,13 +174,39 @@ fn parse_claim(entry: &Value) -> Result<Claim, String> {
 }
 
 /// Checks every claim against the files under `root`.
+///
+/// Each claim must also have an `INV <id>:` line in `spec.txt`, and each such line
+/// must name a claim. A missing spec file counts as no lines.
 #[must_use]
 pub fn evaluate(claims: &[Claim], root: &Path) -> Report {
-    let outcomes = claims
+    let spec = std::fs::read_to_string(root.join("spec.txt")).unwrap_or_default();
+    let declared = spec_invariants(&spec);
+    let mut outcomes: Vec<Outcome> = claims
         .iter()
         .map(|claim| evaluate_claim(claim, root))
         .collect();
-    Report { outcomes }
+    for outcome in &mut outcomes {
+        if !declared.contains(&outcome.claim.id) {
+            outcome
+                .problems
+                .push(format!("no `INV {}:` line in spec.txt", outcome.claim.id));
+        }
+    }
+    let orphans = declared
+        .iter()
+        .filter(|id| !claims.iter().any(|claim| &claim.id == *id))
+        .map(|id| format!("spec.txt declares `INV {id}`, which has no claim in the graph"))
+        .collect();
+    Report { outcomes, orphans }
+}
+
+/// The claim IDs named by the `INV <id>:` lines of `spec`, in order.
+fn spec_invariants(spec: &str) -> Vec<String> {
+    spec.lines()
+        .filter_map(|line| line.strip_prefix("INV "))
+        .filter_map(|rest| rest.split_once(':'))
+        .map(|(id, _)| id.trim().to_string())
+        .collect()
 }
 
 fn evaluate_claim(claim: &Claim, root: &Path) -> Outcome {
@@ -244,21 +272,22 @@ impl Report {
                     .iter()
                     .map(move |p| format!("{}: {p}", o.claim.id))
             })
+            .chain(self.orphans.iter().cloned())
             .collect()
     }
 
     /// True if no claim has a problem.
     #[must_use]
     pub fn passed(&self) -> bool {
-        self.outcomes.iter().all(|o| o.problems.is_empty())
+        self.orphans.is_empty() && self.outcomes.iter().all(|o| o.problems.is_empty())
     }
 
     /// The report as one static HTML page, with no scripts and no external
     /// resources. It has a count per status, one card per claim with its statement,
     /// its status, and its evidence, and the waiver text where there is one.
     ///
-    /// The graph does not link claims to `spec.txt` sections yet, so the page
-    /// cannot show those links.
+    /// The page does not repeat the `INV` lines of `spec.txt`. The gate checks
+    /// that each claim has one.
     #[must_use]
     pub fn render_html(&self) -> String {
         let count = |s: Status| self.outcomes.iter().filter(|o| o.status == s).count();
@@ -481,6 +510,7 @@ mod html_tests {
                 status: Status::Tested,
                 problems: Vec::new(),
             }],
+            orphans: Vec::new(),
         };
         let html = report.render_html();
         assert!(html.starts_with("<!doctype html>"));
@@ -526,7 +556,7 @@ mod tests {
     #[test]
     fn exhaustive_evidence_makes_a_claim_bounded_proven() {
         let root = scratch("proven", "fn check_all() {}\nfn sample() {}\n");
-        let r = evaluate(
+        let r = evaluate_linked(
             &[claim(
                 "A",
                 true,
@@ -542,7 +572,7 @@ mod tests {
     #[test]
     fn sampled_evidence_is_tested_and_not_a_proof() {
         let root = scratch("tested", "fn sample() {}\n");
-        let r = evaluate(&[claim("B", false, &[("test", "sample")], None)], &root);
+        let r = evaluate_linked(&[claim("B", false, &[("test", "sample")], None)], &root);
         assert_eq!(r.outcomes[0].status, Status::Tested);
         assert!(r.passed());
     }
@@ -550,7 +580,7 @@ mod tests {
     #[test]
     fn critical_unproven_claim_fails_the_gate() {
         let root = scratch("unproven", "");
-        let r = evaluate(&[claim("C", true, &[], None)], &root);
+        let r = evaluate_linked(&[claim("C", true, &[], None)], &root);
         assert!(!r.passed());
         assert_eq!(r.outcomes[0].status, Status::Unproven);
     }
@@ -564,9 +594,9 @@ mod tests {
             "fn sample() {}
 ",
         );
-        let r = evaluate(&[claim("H", true, &[("test", "sample")], None)], &root);
+        let r = evaluate_linked(&[claim("H", true, &[("test", "sample")], None)], &root);
         assert!(!r.passed());
-        let waived = evaluate(
+        let waived = evaluate_linked(
             &[claim(
                 "H",
                 true,
@@ -583,7 +613,7 @@ mod tests {
     #[test]
     fn waiver_keeps_a_critical_unproven_claim_visible_and_passing() {
         let root = scratch("waived", "");
-        let r = evaluate(&[claim("D", true, &[], Some("formal model open"))], &root);
+        let r = evaluate_linked(&[claim("D", true, &[], Some("formal model open"))], &root);
         assert!(r.passed(), "{:?}", r.problems());
         assert_eq!(r.outcomes[0].status, Status::Waived);
         assert!(r.render().contains("formal model open"));
@@ -592,7 +622,7 @@ mod tests {
     #[test]
     fn stale_waiver_on_a_proven_claim_fails() {
         let root = scratch("stale", "fn check_all() {}\n");
-        let r = evaluate(
+        let r = evaluate_linked(
             &[claim(
                 "E",
                 true,
@@ -607,7 +637,7 @@ mod tests {
     #[test]
     fn missing_function_fails_the_gate() {
         let root = scratch("missing", "fn other() {}\n");
-        let r = evaluate(&[claim("F", false, &[("test", "absent")], None)], &root);
+        let r = evaluate_linked(&[claim("F", false, &[("test", "absent")], None)], &root);
         assert!(!r.passed());
         assert!(r.problems()[0].contains("fn absent("));
     }
@@ -617,7 +647,7 @@ mod tests {
         let root = scratch("nofile", "");
         let mut c = claim("G", false, &[("fuzz", "target")], None);
         c.evidence[0].path = "no/such/file.rs".to_string();
-        let r = evaluate(&[c], &root);
+        let r = evaluate_linked(&[c], &root);
         assert!(!r.passed());
     }
 
@@ -643,6 +673,73 @@ mod tests {
         assert!(claims[0].critical);
         assert_eq!(claims[0].evidence[0].name, "n");
         assert_eq!(claims[0].waiver, None);
+    }
+
+    /// Writes a `spec.txt` that declares every claim, then evaluates. The older
+    /// tests are about evidence, so they link each claim to a spec line.
+    fn evaluate_linked(claims: &[Claim], root: &Path) -> Report {
+        let spec: String = claims
+            .iter()
+            .map(|c| {
+                format!(
+                    "INV {}: test
+",
+                    c.id
+                )
+            })
+            .collect();
+        std::fs::write(root.join("spec.txt"), spec).unwrap();
+        evaluate(claims, root)
+    }
+
+    /// A scratch directory with a `spec.txt` of the given text, unique per test.
+    fn spec_scratch(name: &str, spec: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tpt-k-spec-{}-{name}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("lib.rs"),
+            "fn sample() {}
+",
+        )
+        .unwrap();
+        std::fs::write(dir.join("spec.txt"), spec).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_claim_without_a_spec_line_fails_the_gate() {
+        let root = spec_scratch(
+            "unlinked",
+            "INV OTHER: something
+",
+        );
+        let r = evaluate(&[claim("B", false, &[("test", "sample")], None)], &root);
+        assert!(!r.passed());
+        assert!(r.problems()[0].contains("no `INV B:` line"));
+    }
+
+    #[test]
+    fn a_spec_line_with_no_claim_fails_the_gate() {
+        let root = spec_scratch(
+            "orphan",
+            "INV B: stated
+INV Z: no claim
+",
+        );
+        let r = evaluate(&[claim("B", false, &[("test", "sample")], None)], &root);
+        assert!(!r.passed());
+        assert!(r.problems().iter().any(|p| p.contains("INV Z")));
+    }
+
+    #[test]
+    fn a_claim_with_a_spec_line_passes() {
+        let root = spec_scratch(
+            "linked",
+            "INV B: stated
+",
+        );
+        let r = evaluate(&[claim("B", false, &[("test", "sample")], None)], &root);
+        assert!(r.passed(), "{:?}", r.problems());
     }
 
     #[test]

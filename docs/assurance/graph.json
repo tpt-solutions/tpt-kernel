@@ -351,6 +351,32 @@
           "name": "property_grants_never_exceed_the_ceiling"
         }
       ]
+    },
+    {
+      "id": "ROOT-1",
+      "layer": "tpt-k-kernel",
+      "critical": false,
+      "statement": "After the root thread revokes its channel handle, using that handle is refused, and its table no longer resolves it. The root program reaches its success exit only if the refusal holds.",
+      "evidence": [
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel/src/main.rs",
+          "name": "root_drop_self_test"
+        }
+      ]
+    },
+    {
+      "id": "MEM-1",
+      "layer": "tpt-k-kernel",
+      "critical": false,
+      "statement": "Revoking the last handle of a memory object removes every mapping of the object before its frames are returned, so no thread keeps reaching the frames.",
+      "evidence": [
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel/src/main.rs",
+          "name": "revoke_mapped_self_test"
+        }
+      ]
     }
   ]
 }

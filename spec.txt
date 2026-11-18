@@ -128,3 +128,29 @@ Phase 5: Formal Assurance & Automation (Ongoing)
 Define core IPC and capability invariants in tpt-concord.
 Wire tpt-cargo-vitals and tpt-semadiff into the daily workflow.
 Begin implementing tpt-k-drivers-synth for automatic, datasheet-driven driver generation.
+
+7. Kernel Invariants
+The capability, IPC, token and manifest code must keep these statements. Each
+line starts with `INV` and the claim's ID. The assurance gate (docs/assurance/graph.json)
+checks that every claim has a line here and that every line here has a claim. The
+evidence for each claim is in the graph.
+INV CAP-1: Deriving a capability never yields a right its parent lacks, and derivation needs GRANT on the parent.
+INV CAP-3: Revoking a capability revokes every capability derived from it, directly or transitively, and no derived capability outlives its parent.
+INV CAP-4: A handle to a revoked slot is refused even after the slot is reused, and a forged or out-of-range handle names no live capability.
+INV CAP-5: Revoking a capability revokes every copy made from it in any table, transitively, and no copy outlives its origin.
+INV CAP-6: A derived capability or a copy names the same kernel object as the capability it came from.
+INV CAP-7: A copy across tables carries no right its origin lacks, and a grant needs GRANT on the source.
+INV CAP-8: A capability operation that is refused leaves the capability table unchanged.
+INV IPC-1: An endpoint neither loses nor duplicates a message: every message sent is queued, held, received or taken exactly once.
+INV IPC-2: A received message comes from the sender it names.
+INV IPC-3: Endpoint queues are first-in, first-out and compact, so messages from senders are received in send order.
+INV IPC-4: A thread waits in at most one place on an endpoint at a time.
+INV IPC-5: A message is held only for the receiver at the head of the queue, and a thread takes a message only when one was held for it.
+INV IPC-6: A send or receive that is refused because a queue is full leaves the endpoint unchanged.
+INV TOK-1: A capability token that is altered, or that was made under another key, is refused.
+INV TOK-2: Attenuating a token never yields a right outside the source token's rights.
+INV SER-1: The IPC frame decoder and its accessors never panic on hostile or mutated input.
+INV SRV-1: A service call is performed only when the token is valid and carries the rights the opcode needs; otherwise the service body does not run.
+INV MAN-1: A capability granted from a policy manifest never carries a right the object's declared ceiling does not allow, and it carries exactly the rights the manifest asks for.
+INV ROOT-1: After the root thread revokes its channel handle, using that handle is refused, and its table no longer resolves it. The root program reaches its success exit only if the refusal holds.
+INV MEM-1: Revoking the last handle of a memory object removes every mapping of the object before its frames are returned, so no thread keeps reaching the frames.
