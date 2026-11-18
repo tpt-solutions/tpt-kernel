@@ -481,6 +481,19 @@
           "name": "token_attenuation_never_widens"
         }
       ]
+    },
+    {
+      "id": "MEM-2",
+      "layer": "tpt-k-kernel-arch-x86_64, tpt-k-kernel",
+      "critical": false,
+      "statement": "When the creator collects a spawned child's exit, the child's address space is released: its page tables are freed, and so are the frames only it owned. The leaves it shares with the template it was forked from are not freed.",
+      "evidence": [
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel-arch-x86_64/src/paging.rs",
+          "name": "releasing_a_fork_frees_its_tables_and_keeps_the_leaves"
+        }
+      ]
     }
   ]
 }

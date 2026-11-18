@@ -2,13 +2,13 @@
 BdsDxe: starting Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
 tpt-k boot: loading TPTK\KERNEL.ELF
 tpt-k boot: entry 0x100000, leaving boot services
-memory: 51766 free frames
+memory: 51760 free frames
 handoff: rsdp at 0xf77e014
 handoff: framebuffer 1280x800 stride 1280 format 2 at 0x80000000
 paging: remap ok
 apic: timer 625000 counts per 10 ms
 Hello tpt-k
-trap 3 (breakpoint) at rip 0x11ab4a
+trap 3 (breakpoint) at rip 0x11b56d
 ioapic: rtc irqs=2
 handles: process tables are isolated
 handles: grant attenuates rights
@@ -40,19 +40,20 @@ caps: end
 <A><B>hello from ring 3
 user: exit 12648430
 spawn: child in slot 12
-user: fault vector 14 at rip 0x12f346 error 0x5
+user: fault vector 14 at rip 0x130346 error 0x5
 ipc: server got 1 2 3 4
 user: exit 10
 user: exit 0
 spawn: image child in slot 13
 user: exit 5
 user: exit 7
+wait: released a child's space (11 tables, 1 frames)
 user: exit 90
 user: exit 1
 user: exit 2
 irq: driver woke
 user: exit 1
 <B><A><B><A>
-preempt: ticks=414 timer switches=313
+preempt: ticks=415 timer switches=315
 wait: a faulted thread's wait reports Fault
 scheduler: ok

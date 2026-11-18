@@ -95,6 +95,40 @@ static mut EXIT_STATUS: [Option<ExitStatus>; MAX_THREADS] = [None; MAX_THREADS];
 /// The creator waiting on each thread slot, if one is in `SYS_WAIT`.
 static mut WAITERS: [Option<usize>; MAX_THREADS] = [None; MAX_THREADS];
 
+/// Frames that one address space owns, freed when the space is released.
+#[derive(Clone, Copy)]
+struct OwnedFrames {
+    frames: [u64; 8],
+    count: usize,
+}
+
+impl OwnedFrames {
+    const fn new() -> Self {
+        Self {
+            frames: [0; 8],
+            count: 0,
+        }
+    }
+
+    fn push(&mut self, frame: u64) -> Result<(), SysError> {
+        let slot = self.frames.get_mut(self.count).ok_or(SysError::NoMemory)?;
+        *slot = frame;
+        self.count += 1;
+        Ok(())
+    }
+}
+
+/// A spawned child's address space: its root, and the frames only it owns. The
+/// space is released when the creator collects the child's exit.
+#[derive(Clone, Copy)]
+struct ChildSpace {
+    root: usize,
+    owned: OwnedFrames,
+}
+
+/// The address space of each spawned thread slot.
+static mut CHILD_SPACE: [Option<ChildSpace>; MAX_THREADS] = [None; MAX_THREADS];
+
 /// Per-thread context, indexed by scheduler slot. The kernel stack is used for
 /// syscalls and ring-3 interrupts. The root is the address space, which is
 /// loaded into CR3 when the thread is switched in.
@@ -1649,6 +1683,38 @@ fn notify_exit(status: ExitStatus) {
     });
 }
 
+/// Releases the address space of child thread `child`, if it has one: its tables,
+/// and the frames only it owned. Called by the creator once the child's exit is
+/// collected, so the child is not running and its space is not the active one.
+/// Must be called with interrupts off.
+fn release_child_space(child: usize) {
+    // SAFETY: interrupts are off, so this is the only code using the tables and the
+    // frame allocator.
+    unsafe {
+        let Some(space) = (*addr_of_mut!(CHILD_SPACE))[child].take() else {
+            return;
+        };
+        let freed_tables = (*addr_of_mut!(KERNEL_TABLES))
+            .as_mut()
+            .map_or(0, |tables| tables.release_root(space.root).unwrap_or(0));
+        let mut freed_frames = 0;
+        if let Some(alloc) = (*addr_of_mut!(FRAME_ALLOC)).as_mut() {
+            for &frame in &space.owned.frames[..space.owned.count] {
+                if let Some(frame) = PhysFrame::from_address(frame) {
+                    if alloc.free(frame).is_ok() {
+                        freed_frames += 1;
+                    }
+                }
+            }
+        }
+        let mut out = serial::Writer;
+        let _ = writeln!(
+            out,
+            "wait: released a child's space ({freed_tables} tables, {freed_frames} frames)"
+        );
+    }
+}
+
 /// Waits for thread `slot` to exit, and returns its exit code. The caller must
 /// have created the thread, and no other thread may be waiting on it.
 fn wait_child(slot: u64) -> Result<u64, SysError> {
@@ -1669,6 +1735,7 @@ fn wait_child(slot: u64) -> Result<u64, SysError> {
                 return Err(SysError::Denied);
             }
             if let Some(status) = (*addr_of_mut!(EXIT_STATUS))[child] {
+                release_child_space(child);
                 return status_result(status);
             }
             if (*addr_of_mut!(WAITERS))[child].is_some() {
@@ -1680,7 +1747,10 @@ fn wait_child(slot: u64) -> Result<u64, SysError> {
                 return Err(SysError::Deadlock);
             }
             match (*addr_of_mut!(EXIT_STATUS))[child] {
-                Some(status) => status_result(status),
+                Some(status) => {
+                    release_child_space(child);
+                    status_result(status)
+                }
                 None => Err(SysError::Invalid),
             }
         }
@@ -1736,7 +1806,7 @@ fn write_words_in_root(root: usize, vaddr: u64, words: [u64; 4]) -> Result<(), &
 /// entries of the spawn template, so without this a child would map the same stack
 /// frames as the boot space's threads, and could read and write them. Each page is
 /// given a new zeroed frame. Must be called with interrupts off.
-fn give_fresh_user_stack(root: usize) -> Result<(), SysError> {
+fn give_fresh_user_stack(root: usize, owned: &mut OwnedFrames) -> Result<(), SysError> {
     let (start, end) = user_stack_bounds();
     if !start.is_multiple_of(FRAME_SIZE) {
         return Err(SysError::NoMemory);
@@ -1754,6 +1824,7 @@ fn give_fresh_user_stack(root: usize) -> Result<(), SysError> {
             core::ptr::write_bytes(frame.start() as *mut u8, 0, FRAME_SIZE as usize);
             frame.start()
         };
+        owned.push(phys)?;
         map_into_root(root, vaddr, phys, true).map_err(|_| SysError::NoMemory)?;
         vaddr += FRAME_SIZE;
     }
@@ -2620,7 +2691,8 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, SysErr
                 .map_err(|_| SysError::NoMemory)?;
             let root = tables.fork().map_err(|_| SysError::NoMemory)?;
             let cr3 = tables.root_address_of(root);
-            give_fresh_user_stack(root)?;
+            let mut owned = OwnedFrames::new();
+            give_fresh_user_stack(root, &mut owned)?;
             (*addr_of_mut!(CHILD_ROOTS))[index] = (root, cr3);
 
             let stack = &mut (*addr_of_mut!(SPAWN_STACKS))[index].0;
@@ -2631,6 +2703,7 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, SysErr
             };
             let slot = spawn_thread(stack, entry, cr3).map_err(|_| SysError::Full)?;
             (*addr_of_mut!(SPAWN_USED))[index] = true;
+            (*addr_of_mut!(CHILD_SPACE))[slot] = Some(ChildSpace { root, owned });
 
             let source = (*addr_of_mut!(CAP_TABLES))[me];
             let copy = grant(
@@ -2708,7 +2781,8 @@ fn spawn_image(descriptor: u64) -> Result<usize, SysError> {
                 .map_err(|_| SysError::NoMemory)?;
             let root = tables.fork().map_err(|_| SysError::NoMemory)?;
             let cr3 = tables.root_address_of(root);
-            give_fresh_user_stack(root)?;
+            let mut owned = OwnedFrames::new();
+            give_fresh_user_stack(root, &mut owned)?;
             (*addr_of_mut!(CHILD_ROOTS))[index] = (root, cr3);
 
             let tables = (*addr_of_mut!(KERNEL_TABLES))
@@ -2738,6 +2812,7 @@ fn spawn_image(descriptor: u64) -> Result<usize, SysError> {
             };
             let slot = spawn_thread(stack, entry, cr3).map_err(|_| SysError::Full)?;
             (*addr_of_mut!(SPAWN_USED))[index] = true;
+            (*addr_of_mut!(CHILD_SPACE))[slot] = Some(ChildSpace { root, owned });
 
             let source = (*addr_of_mut!(CAP_TABLES))[me];
             let copy = grant(
@@ -2943,7 +3018,8 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     // SAFETY: called by the bootstrap thread before the threads run, with
     // interrupts off.
     for root in roots {
-        give_fresh_user_stack(root.0).unwrap_or_else(|_| fail("process stack"));
+        let mut owned = OwnedFrames::new();
+        give_fresh_user_stack(root.0, &mut owned).unwrap_or_else(|_| fail("process stack"));
     }
     // SAFETY: the addresses are taken of distinct statics, and nothing is borrowed
     // until the loop below turns each one into a reference, one at a time.
