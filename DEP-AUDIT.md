@@ -65,7 +65,7 @@ Results, with the policy allowlist, `--dev-allow Apache-2.0`, and the
 | tpt-fabric | pass | 0 | |
 | tpt-filesystem | pass | 0 | |
 | tpt-crypto-rustls | pass | 7 (see below) | `deny.toml` added in `936589f`; `cargo deny check` passes |
-| tpt-mcpbox | pass (`witx` and `webpki-roots` as recorded exceptions) | 7 (see below) | `cargo deny check` passes; its `deny.toml` accepts the 7 until 2027-02-09 |
+| tpt-mcpbox | pass (`witx` and `webpki-roots` as recorded exceptions) | 1 shipped, accepted (`rsa`) | moved to `tpt-crypto-rustls` on 2026-11-18; `cargo deny` passes |
 
 The sibling repos run `cargo-deny` in CI, not vitals. `cargo deny check` passes
 in primitives, simd, crypto, fabric, filesystem, mcpbox and crypto-rustls. vitals
@@ -79,10 +79,18 @@ the binary). It is an exception until `tpt-wasm` replaces Wasmtime (LICENSE-POLI
 
 Checked with `cargo tree --target all -e all` on 2026-11-18.
 
-- **Shipped, `tpt-mcpbox`:** `rustls-rustcrypto` 0.0.2-alpha is a normal
-  dependency of `tpt-mcpbox-proxy` and `tpt-mcpbox-runtime`. It brings the old
-  `rustls-webpki` 0.102.8 (five advisories), `crypto-bigint` and `paste`. The
-  advisories are accepted in `tpt-mcpbox/deny.toml` until 2027-02-09.
+- **Done, `tpt-mcpbox` (2026-11-18):** the outbound TLS client moved from
+  `rustls-rustcrypto` 0.0.2-alpha to `tpt-crypto-rustls` (`02f0db0` on its
+  master). That removed `rustls-webpki` 0.102.8 (five advisories), `crypto-bigint`
+  and `paste` from the shipped tree, and their entries are gone from `deny.toml`.
+  The workspace builds, and all of its tests pass. A scratch program completed
+  TLS 1.3 handshakes with example.com, www.google.com and api.github.com, each with
+  certificate validation against the bundled roots. Only `rsa` remains, through
+  `tpt-crypto-rustls`, and `deny.toml` accepts it until 2027-02-09.
+- **Caveat:** the migration puts an unaudited, client-only provider on the
+  outbound path. `tpt-crypto-rustls`'s README says not to use it to protect real
+  traffic until it is audited. `tpt-mcpbox` depends on it by path, so CI needs a
+  git dependency before it can build the repo.
 - **Shipped, `tpt-crypto-rustls`:** `rsa` 0.9.10 (RUSTSEC-2023-0071, Marvin). The
   crate uses it only to verify signatures. The fix is rsa 0.10, which needs
   digest 0.11 support in `tpt-crypto`. rsa 0.10.0 does not build against the
@@ -92,11 +100,9 @@ Checked with `cargo tree --target all -e all` on 2026-11-18.
   are accepted in its `deny.toml` until 2027-02-09 and do not ship.
 
 **Recommendation.**
-1. Replace `rustls-rustcrypto` in `tpt-mcpbox` with `tpt-crypto-rustls`, which is
-   the provider this project is building. That removes the alpha crate and all
-   seven advisories from the shipped tree. It is the only fix for the six
-   `rustls-webpki` 0.102 advisories, because no newer `rustls-rustcrypto` is
-   released. Target: before 2027-02-09, the existing expiry.
+1. Done: `tpt-mcpbox` uses `tpt-crypto-rustls` (see above). Still to do: the
+   audit that the README asks for before the provider protects real traffic, and
+   a git dependency in place of the path dependency.
 2. Move `tpt-crypto` to digest 0.11 so `rsa` can go to 0.10. That clears the last
    shipped advisory in `tpt-crypto-rustls`.
 3. Keep the dev-only acceptances in `tpt-crypto-rustls` until the test peer is
