@@ -1,6 +1,6 @@
 # tpt-k-kernel
 
-The tpt-k microkernel core: the trusted computing base (scheduling, physical memory, zero-copy IPC, interrupt routing).
+The tpt-k microkernel core: the trusted computing base (scheduling, physical memory, IPC, capability tables, interrupt routing).
 
 Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem by TPT Solutions.
 
@@ -10,12 +10,12 @@ What is built, and what is still open, is in [the layer checklist](../todos/kern
 
 ## Build
 
-This repo is bare-metal, so build it for its target (it has no host runtime):
+The kernel is bare-metal and has no host runtime. Build it with the build script, which passes the linker script:
 
 ```sh
-cargo build --workspace --target x86_64-unknown-none
+scripts/build-kernel.sh
 ```
 
 ## License
 
-Dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE). See [LICENSE-POLICY.md](LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
+Dual-licensed under [MIT](../../LICENSE-MIT) OR [Apache-2.0](../../LICENSE-APACHE). See [LICENSE-POLICY.md](../../LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](../../CONTRIBUTING.md) for how to contribute.

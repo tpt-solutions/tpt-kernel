@@ -1,7 +1,7 @@
 # Versioning and release
 
 tpt-k is one repo with one workspace. A release is a version tag on `master`
-with a matching changelog entry. No crate is published to crates.io (all 32 are
+with a matching changelog entry. No crate is published to crates.io (all 34 are
 `publish = false`), so a release is a source tag and the artifacts built from it.
 
 ## Versioning
@@ -9,10 +9,9 @@ with a matching changelog entry. No crate is published to crates.io (all 32 are
 - Follow [Semantic Versioning](https://semver.org/). While the major version is
   0, any minor release may change an interface, and each one says so in the
   changelog.
-- The repo version is the version of the release. The crates are at `0.0.0`
-  today, and that is not a release version. Before the first tag, decide whether
-  to set a version in `[workspace.package]` for all crates to inherit, or to set
-  it per crate. That is an open decision (see below).
+- The repo version is the version of the release. The version is set once in
+  `[workspace.package]` in the root `Cargo.toml`, and every crate inherits it
+  (see Decisions below).
 - Each crate keeps its own `CHANGELOG.md`, with an `Unreleased` section. The repo
   root `CHANGELOG.md` summarises the release across crates.
 

@@ -10,4 +10,4 @@ What is built, and what is still open, is in [the layer checklist](../todos/ipc.
 
 ## License
 
-Dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE). See [LICENSE-POLICY.md](LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
+Dual-licensed under [MIT](../../LICENSE-MIT) OR [Apache-2.0](../../LICENSE-APACHE). See [LICENSE-POLICY.md](../../LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](../../CONTRIBUTING.md) for how to contribute.

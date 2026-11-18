@@ -55,11 +55,13 @@ Run the local gate before you push:
 scripts/check.sh
 ```
 
+The script is a thin wrapper over `cargo run -p tpt-k-toolchain-xtask -- check`.
 It runs `cargo fmt --check`, clippy with warnings denied, and the host test
 suite over the workspace, excluding the two bare-metal images (`tpt-k-boot` and
-`tpt-k-kernel`), which build only for their own targets. When `tpt-cargo-vitals`
-is on `PATH` it also runs the license and CVE gate with the allowlist from
-[LICENSE-POLICY.md](../LICENSE-POLICY.md).
+`tpt-k-kernel`), which build only for their own targets. It then runs the
+assurance gate. When `tpt-cargo-vitals` is on `PATH` it also runs the license
+and CVE gate with the allowlist from [LICENSE-POLICY.md](../LICENSE-POLICY.md).
+If `tpt-cargo-vitals` is missing, the license gate is skipped with a message.
 
 To use it as a pre-push hook:
 
@@ -95,8 +97,10 @@ stays open. `cargo test` runs the same check on the real graph, so CI enforces
 it too.
 
 To add a claim, add an entry to `graph.json` that names real evidence. Use
-`exhaustive` only for a check that enumerates a finite model, and `test` for
-sampled checks. A sampled check does not make a claim proven.
+`exhaustive` only for a check that enumerates a finite model, and `proof` for a
+solver script whose verdicts are recorded in a `.log` file next to it (see
+RIGHTS-1). Use `test`, `property` or `fuzz` for sampled checks. A sampled check
+does not make a claim proven.
 
 ## Reviewing generated or refactored code
 
@@ -137,7 +141,7 @@ repo runs QEMU without you asking for it.
 - Kernel and trusted-computing-base crates are `#![no_std]` with no C or C++
   bindings. Use `#[cfg(test)] extern crate std;` so host tests still run.
 - Document every public item. Every `unsafe` block needs a comment that states
-  the invariant it relies on (the kernel has none so far).
+  the invariant it relies on.
 - Keep parsers allocation-free and bounds-checked. Return an error rather than
   panicking on hostile input, and add a test for each refusal.
 - Hardware access goes through a trait the caller implements (for example

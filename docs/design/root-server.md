@@ -68,8 +68,10 @@ the RTC object into the driver thread's table directly.
 
 Children and drivers get memory from the root. A grant of a memory object
 transfers the pages, and the root can later revoke them. Freeing objects (item 1
-of the approved list) is a precondition for long-running services: an object is
-freed when its last capability is revoked and its last mapping is removed.
+of the approved list) is a precondition for long-running services. Part of it is
+built: `SYS_MEM_FREE` exists, and an object is reclaimed when its last handle is
+revoked, with its mappings removed first (claim `MEM-1`). What is still open is
+listed in `todo.md`.
 
 ## 6. Protocol with the kernel
 
@@ -97,7 +99,7 @@ these.
 ## 8. Decisions needed
 
 - **Where the root's code runs.** Ring 3 as a `no_std` binary (proposed), or the
-  `std` host scaffold noted in `docs/layers/root.md`. Ring 3 is needed for the
+  `std` host scaffold that `tpt-k-root` is today. Ring 3 is needed for the
   capability model to mean anything.
 - **Embedded or loaded images.** Embedded until the boot volume reader exists
   (proposed).

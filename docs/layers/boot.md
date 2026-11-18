@@ -1,6 +1,6 @@
 # tpt-k-boot
 
-The tpt-k UEFI bootloader: loads the kernel and root server images from the ESP.
+The tpt-k UEFI bootloader: loads the kernel image from the ESP and hands over the boot information. Loading the root server image is not built yet.
 
 Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem by TPT Solutions.
 
@@ -10,12 +10,12 @@ What is built, and what is still open, is in [the layer checklist](../todos/boot
 
 ## Build
 
-This repo is bare-metal, so build it for its target (it has no host runtime):
+The loader is a UEFI application, so build it for its target:
 
 ```sh
-cargo build --workspace --target x86_64-unknown-uefi
+cargo build -p tpt-k-boot --target x86_64-unknown-uefi
 ```
 
 ## License
 
-Dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE). See [LICENSE-POLICY.md](LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
+Dual-licensed under [MIT](../../LICENSE-MIT) OR [Apache-2.0](../../LICENSE-APACHE). See [LICENSE-POLICY.md](../../LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](../../CONTRIBUTING.md) for how to contribute.
