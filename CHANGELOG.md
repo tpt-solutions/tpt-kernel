@@ -17,7 +17,10 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 - Assurance dashboard: `tpt-k-build assure --html <file>` writes one static HTML page.
 - Boot image: `tpt-k-build image --run` and `tpt-k-build run` build the kernel and loader, stage the ESP, and boot it in QEMU with serial on stdio.
 - `cargo xtask` (`crates/tpt-k-toolchain-xtask`): check, build-kernel, qemu-smoke and fetch-deps in Rust. The shell scripts in `scripts/` are thin wrappers.
-- Deterministic replay, as a tool: `tpt-k-build replay --record|--golden` runs QEMU on the instruction counter. It does not yet give a repeatable transcript (see `todo.md`).
+- Deterministic replay: `tpt-k-build replay --record|--golden` boots the kernel built with the `replay` feature (a fixed APIC timer count) under QEMU with a fixed instruction-counter shift. Two runs give the same transcript; the golden trace is `replay/golden.txt`.
+- Workspace version `0.1.0`, set once in `[workspace.package]` and inherited by all 34 crates (decided 2026-11-18, see `docs/release.md`).
+- The license gate (`xtask check`, the CI license job) allows `MIT-0` and `BSL-1.0`, as `LICENSE-POLICY.md` already did. `CDLA-Permissive-2.0` is not in the gate: it stays a scoped exception for `webpki-roots` only.
+- `semadiff` is installed from `tpt-semadiff`, so the review workflow in `docs/developer-guide.md` runs on this machine.
 - CI: `.github/workflows/image.yml` builds the boot image and the dashboard on push to master. `.devcontainer/` gives the pinned toolchain, both targets, QEMU and OVMF.
 
 - `tpt-k-build doctor`: checks the Rust toolchain and targets, QEMU, OVMF, the sibling repos and the git hooks path. It prints the fix for each problem, for Windows and Linux.

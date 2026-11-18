@@ -108,8 +108,11 @@ git difftool --tool=semadiff <base>..<head>
 ```
 
 The `difftool.semadiff.cmd` setting is already in the git config of this
-clone. The `tpt-semadiff` binary has to be on `PATH`. It was not on PATH when
-this section was written, so the workflow has not been run on this machine.
+clone. The `tpt-semadiff` binary has to be on `PATH`. It is installed from the
+sibling repo (`cargo install --path ../tpt-semadiff/crates/tpt-semadiff-cli --locked`),
+which puts `semadiff` in `~/.cargo/bin`. Rust files get the syntax-aware diff;
+other file types fall back to a line diff. `semadiff git-setup` writes the same
+git config if the clone does not have it.
 
 ## Building the kernel and loader
 
