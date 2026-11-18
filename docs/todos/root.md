@@ -36,6 +36,7 @@ Rules: `#![no_std]` where it is in the TCB, 100% Rust, no C/C++ bindings.
 ## Phase 9 — Hardening
 
 - [ ] Root server drops supreme privileges after bootstrap (verified by test + Assurance Graph)
+  - 2026-11-19: partly. The demo's root thread revokes its channel handle, with the copies made from it, after its last use, and the smoke test checks that using the revoked handle is refused (the root exits only on that path). Boot self-test `root: a revoked handle is refused`, and claim `ROOT-1` in the assurance graph. Open: the user-space root server (`tpt-k-root`) is still a scaffold, so this is the kernel side of the drop, not a server that starts with less authority than it needs.
 
 ## Phase 11a — stub cleanup (2026-11-18)
 

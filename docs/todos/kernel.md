@@ -63,9 +63,12 @@ documented invariant.
 ## Phase 9 — Hardening
 
 - [ ] Root server drops supreme privileges after bootstrap (kernel side of the test)
+  - 2026-11-19: partly. The demo's root thread revokes its channel handle, with the copies made from it, after its last use, and the smoke test checks that using the revoked handle is refused (the root exits only on that path). Boot self-test `root: a revoked handle is refused`, and claim `ROOT-1` in the assurance graph. Open: the user-space root server (`tpt-k-root`) is still a scaffold, so this is the kernel side of the drop, not a server that starts with less authority than it needs.
 - [ ] Performance benchmarks: context switch, interrupt-to-driver latency
-- [ ] Security review of the syscall interface and capability code
-- [ ] Review all `unsafe` blocks; document invariants
+- [x] Security review of the syscall interface and capability code
+  - 2026-11-19: read-only review, 12 findings. Fixed: spawn refused after its thread existed halted the kernel; children inherited window mappings; DF not cleared on syscall entry. Open: `SYS_RECV`/`SYS_RECV_CAP` buffer check after dequeue; refused blocking send/receive leave the endpoint changed (IPC-1, IPC-4); child spaces share the root's user stack; `send_bulk` dead origin; `grant` without target consent; `SYS_MAP` over another object's address. Full list in the top-level `todo.md`. 2026-11-19, later: fixed receive buffer check, blocking-send/receive refusal before state changes, bulk temporary deleted without revoking, `SYS_MAP` address-in-use refusal, register scrub on return, and fresh stacks for spawned children. 2026-11-19, decided: grant consent is built (a thread may grant only to threads it created), and every space except the boot space now has its own user stack. Found and fixed: the frame allocator could hand out frames below 1 MiB
+- [x] Review all `unsafe` blocks; document invariants
+  - 2026-11-19: done for every crate and for `main.rs` (91 sites). Fixed: loader segment-end overflow; unaligned user word accesses now refused (`within_words`). Open: `&mut` aliasing across context switches and in `give_fresh_user_stack`, which needs restructuring
 
 ## CI
 
@@ -79,5 +82,5 @@ documented invariant.
 - [x] `tpt-k-kernel-arch-aarch64` removed from the CI `tcb-nostd` group until it has code
 - [x] Ring-3 faults kill only the faulting thread, with a smoke case (2026-11-18: `user: fault vector 14`; the kernel runs on)
 - [ ] Real `SYS_EXIT` teardown (partly, 2026-11-18: an exiting thread deletes its handles without revoking, seL4-style, and the derivation tree is re-linked (`cap::delete_across`). Unreferenced memory objects are reclaimed, which returns their frames. Open: notifying the parent. There is no wait call yet; add it with the root server)
-- [ ] `SYS_MEM_FREE` and freeing on revoke (partly, 2026-11-18: `SYS_MEM_FREE` frees an unmapped object, revokes its handles in every table, and returns its frames; mapped objects get `EBUSY` since there is no unmap. 2026-11-18, later: freeing on the last revoke or delete is done, and so is reclaim at thread exit. Open: unmap)
+- [ ] `SYS_MEM_FREE` and freeing on revoke (partly, 2026-11-18: `SYS_MEM_FREE` frees an unmapped object, revokes its handles in every table, and returns its frames; mapped objects get `EBUSY` since there is no unmap. 2026-11-18, later: freeing on the last revoke or delete is done, and so is reclaim at thread exit. 2026-11-19: `SYS_UNMAP` is in, with up to 4 recorded mappings per object. 2026-11-19, later: reclaim removes an object's mappings when no handle is left, so revoking the last handle or exiting unmaps it first (claim `MEM-1`). Open: an exited thread's page tables are not released)
 - [x] Distinct negative error codes instead of `u64::MAX` (2026-11-18: negated errno, checked by a boot self-test; receive buffers keep `u64::MAX` as "no capability")
