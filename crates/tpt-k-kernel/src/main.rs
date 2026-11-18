@@ -44,6 +44,13 @@ use tpt_k_kernel_mem::{Frame as PhysFrame, FrameAllocator, FRAME_SIZE};
 use tpt_k_kernel_sched::{Scheduler, State, MAX_THREADS};
 
 /// Words per kernel thread stack (4 KiB).
+/// APIC timer counts per 10 ms under the `replay` feature. A calibrated count
+/// moves with host timing, which moves the preemption points and so the order
+/// the demo threads finish in. A fixed count keeps the trace the same on every
+/// run under the instruction counter. Normal builds calibrate.
+#[cfg(feature = "replay")]
+const REPLAY_TIMER_COUNTS: u32 = 625_000;
+
 const THREAD_STACK_WORDS: usize = 512;
 
 /// A thread stack. The alignment keeps its end 16-byte aligned. A thread's
@@ -2396,6 +2403,9 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     serial::write_str("paging: remap ok\n");
     pic::init();
     apic::enable();
+    #[cfg(feature = "replay")]
+    let ticks = REPLAY_TIMER_COUNTS;
+    #[cfg(not(feature = "replay"))]
     let ticks = apic::calibrate_10ms();
     if ticks == 0 || ticks == u32::MAX {
         fail("apic timer calibration failed");

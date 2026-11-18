@@ -152,7 +152,7 @@ fn run(args: &[String]) -> Result<String, Failure> {
 /// `target/tpt-k/esp`, and, if `launch`, boots it in QEMU with the serial port on
 /// this terminal's standard streams. Runs from the repo root.
 fn assemble_image(launch: bool) -> Result<String, Failure> {
-    let (_root, plan) = build_and_stage()?;
+    let (_root, plan) = build_and_stage(&[])?;
     let mut text = format!("image staged in {}\n", runner::esp_dir(&plan).display());
     if !launch {
         return Ok(text);
@@ -172,14 +172,14 @@ fn assemble_image(launch: bool) -> Result<String, Failure> {
 
 /// Builds the kernel and the loader from the repo root, and stages the ESP. Returns
 /// the root and the plan.
-fn build_and_stage() -> Result<(PathBuf, runner::ImagePlan), Failure> {
+fn build_and_stage(features: &[&str]) -> Result<(PathBuf, runner::ImagePlan), Failure> {
     let root = std::env::current_dir().map_err(|e| Failure::Io(e.to_string()))?;
     if !root.join("rust-toolchain.toml").is_file() {
         return Err(Failure::Gate(
             "run from the repo root (rust-toolchain.toml not found here)".to_string(),
         ));
     }
-    let plan = runner::plan_image(&root);
+    let plan = runner::plan_image_with(&root, features);
     for step in &plan.builds {
         eprintln!(
             "tpt-k-build: building the {} (cargo {})",
@@ -233,7 +233,7 @@ fn qemu_for(plan: &runner::ImagePlan, serial: Serial, icount: bool) -> Result<Qe
 /// a golden trace (`--golden <file>`). With the instruction counter the transcript is
 /// the same on every run, so any difference is a change in the kernel or the loader.
 fn replay_report(options: &Options) -> Result<String, Failure> {
-    let (_root, plan) = build_and_stage()?;
+    let (_root, plan) = build_and_stage(&["replay"])?;
     let qemu_run = qemu_for(&plan, Serial::Stdio, true)?;
     eprintln!("tpt-k-build: replaying on the instruction counter (this takes a while)");
     let outcome =

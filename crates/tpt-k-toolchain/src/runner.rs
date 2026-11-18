@@ -15,6 +15,10 @@ pub const TARGET_KERNEL: &str = "x86_64-unknown-none";
 pub const TARGET_UEFI: &str = "x86_64-unknown-uefi";
 /// The linker script for the kernel, relative to the repo root.
 pub const KERNEL_LINKER_SCRIPT: &str = "crates/tpt-k-kernel/linker.ld";
+/// The instruction-counter shift for replay: each guest instruction advances the
+/// virtual clock by 2^3 ns. Fixed, so the virtual clock depends only on the
+/// instruction count.
+pub const ICOUNT_SHIFT: u32 = 3;
 /// The directory under the repo's target directory where the image is staged.
 pub const OUT_DIR: &str = "target/tpt-k";
 
@@ -52,6 +56,34 @@ pub struct ImagePlan {
 /// Plans the image for the repo at `root`. Nothing is built or copied.
 #[must_use]
 pub fn plan_image(root: &Path) -> ImagePlan {
+    plan_image_with(root, &[])
+}
+
+/// Plans the image, with the kernel built with `features` (for example `replay`).
+/// Nothing is built or copied.
+#[must_use]
+pub fn plan_image_with(root: &Path, features: &[&str]) -> ImagePlan {
+    let mut kernel_args: Vec<String> = vec![
+        "rustc".into(),
+        "-p".into(),
+        "tpt-k-kernel".into(),
+        "--bin".into(),
+        "tpt-k-kernel".into(),
+        "--target".into(),
+        TARGET_KERNEL.into(),
+    ];
+    if !features.is_empty() {
+        kernel_args.push("--features".into());
+        kernel_args.push(features.join(","));
+    }
+    kernel_args.extend([
+        "--".into(),
+        "-C".into(),
+        "relocation-model=static".into(),
+        "-C".into(),
+        format!("link-arg=-T{KERNEL_LINKER_SCRIPT}"),
+    ]);
+
     let target = root.join("target");
     let kernel_elf = target
         .join(TARGET_KERNEL)
@@ -77,20 +109,7 @@ pub fn plan_image(root: &Path) -> ImagePlan {
         builds: vec![
             BuildStep {
                 what: "kernel",
-                args: vec![
-                    "rustc".into(),
-                    "-p".into(),
-                    "tpt-k-kernel".into(),
-                    "--bin".into(),
-                    "tpt-k-kernel".into(),
-                    "--target".into(),
-                    TARGET_KERNEL.into(),
-                    "--".into(),
-                    "-C".into(),
-                    "relocation-model=static".into(),
-                    "-C".into(),
-                    format!("link-arg=-T{KERNEL_LINKER_SCRIPT}"),
-                ],
+                args: kernel_args,
             },
             BuildStep {
                 what: "loader",
@@ -279,9 +298,11 @@ pub fn qemu_args(run: &QemuRun) -> Vec<String> {
     if run.icount {
         // The RTC follows the virtual clock too. Otherwise its interrupts follow
         // host time, and the order in which the demo threads finish changes.
+        // The shift is fixed: `shift=auto` adapts the instruction rate to host
+        // load, which makes the virtual clock, and so the trace, vary per run.
         args.extend([
             "-icount".into(),
-            "shift=auto,sleep=off".into(),
+            format!("shift={ICOUNT_SHIFT},sleep=off"),
             "-rtc".into(),
             "clock=vm".into(),
         ]);

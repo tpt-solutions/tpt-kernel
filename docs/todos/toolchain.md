@@ -29,5 +29,5 @@ Scope: the build CLI `tpt-k-build`, and the assembly of bootable images.
 ## Phase 11c — innovative features (2026-11-18)
 
 - [x] Capability inspector: the kernel dumps `cap:` lines at boot; `tpt-k-build caps --serial` renders text or DOT
-- [ ] Deterministic replay: `tpt-k-build replay` is built on the instruction counter, but the transcript still varies, because the APIC timer period is calibrated against the PIT each boot. Needs a fixed period under replay (a kernel design decision)
+- [x] Deterministic replay: `tpt-k-build replay` boots the kernel built with the `replay` feature (fixed APIC timer count) under QEMU with a fixed icount shift. Two runs match the golden trace in `replay/golden.txt` (2026-11-18). The shift was the second source of variation: `shift=auto` tracks host load.
 - [x] Assurance dashboard: `tpt-k-build assure --html <file>`. Open: linking claims to spec.txt sections

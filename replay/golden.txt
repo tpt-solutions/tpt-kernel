@@ -1,0 +1,53 @@
+[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01H[2J[01;01H[=3h[2J[01;01HBdsDxe: loading Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+BdsDxe: starting Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+tpt-k boot: loading TPTK\KERNEL.ELF
+tpt-k boot: entry 0x100000, leaving boot services
+memory: 51966 free frames
+handoff: rsdp at 0xf77e014
+handoff: framebuffer 1280x800 stride 1280 format 2 at 0x80000000
+paging: remap ok
+apic: timer 625000 counts per 10 ms
+Hello tpt-k
+trap 3 (breakpoint) at rip 0x116375
+ioapic: rtc irqs=2
+handles: process tables are isolated
+handles: grant attenuates rights
+errno: failures are negated errno values
+mem: freed object returned its frames
+mem: revoking the last handle reclaimed the object
+caps: begin
+cap: table=0 slot=0 object=3 rights=RWG parent=- origin=-
+cap: table=0 slot=1 object=256 rights=RWG parent=- origin=-
+cap: table=0 slot=2 object=2 rights=RWG parent=- origin=-
+cap: table=3 slot=0 object=0 rights=R-- parent=- origin=-
+cap: table=3 slot=1 object=1 rights=-W- parent=- origin=-
+cap: table=4 slot=0 object=0 rights=RWG parent=- origin=-
+cap: table=4 slot=1 object=1 rights=RWG parent=- origin=-
+cap: table=4 slot=2 object=0 rights=-W- parent=0 origin=-
+cap: table=4 slot=3 object=0 rights=R-- parent=0 origin=-
+cap: table=4 slot=4 object=1 rights=R-- parent=1 origin=-
+cap: table=7 slot=0 object=256 rights=RWG parent=- origin=0.1
+cap: table=7 slot=1 object=2 rights=-W- parent=- origin=0.2
+cap: table=8 slot=0 object=2 rights=R-- parent=- origin=0.2
+cap: table=9 slot=0 object=3 rights=RWG parent=- origin=0.0
+cap: table=9 slot=1 object=3 rights=-W- parent=- origin=0.0
+cap: table=10 slot=0 object=512 rights=R-- parent=- origin=-
+caps: end
+<A><B>hello from ring 3
+user: exit 12648430
+spawn: child in slot 12
+user: fault vector 14 at rip 0x129322 error 0x5
+ipc: server got 1 2 3 4
+user: exit 10
+user: exit 0
+spawn: image child in slot 13
+user: exit 90
+user: exit 5
+user: exit 7
+user: exit 1
+user: exit 2
+irq: driver woke
+user: exit 1
+<B><A><B><A>
+preempt: ticks=414 timer switches=313
+scheduler: ok
