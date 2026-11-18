@@ -36,6 +36,7 @@ fuzz targets.
 ## Assurance
 
 - [ ] Fuzzing campaigns for the ACPI, PCI, FDT, and USB parsers (feeds Phase 5 in the master plan) (partly, 2026-11-17: deterministic mutation tests with 2000 cases each, no panics found; not coverage-guided fuzzing)
+  - 2026-11-19: seeded campaigns of one million iterations per parser pass, with fixed seeds (`TPT_FUZZ_ITERATIONS=1000000`). Logs are in `docs/assurance/campaigns/tpt-k-hal-{acpi,fdt,pci,usb}.txt` (commit `bc0a0a6`), and claim `FUZZ-1` cites them. Still open: a coverage-guided run, and real table dumps.
 
 ## Phase 11a — stub cleanup (2026-11-18)
 

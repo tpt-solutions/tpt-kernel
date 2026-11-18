@@ -18,7 +18,7 @@ Rules: `#![no_std]`, 100% Rust, no C/C++ bindings.
 
 ## Phase 4 — Storage
 
-- [x] Block-device IPC protocol defined here, used by `tpt-k-drivers` and `tpt-k-userland` (2026-11-17: read, write, flush and get-info frames in the `block` module, with `serve_block` checking bounds before the device runs; not yet used by drivers or userland)
+- [ ] Block-device IPC protocol defined here, used by `tpt-k-drivers` and `tpt-k-userland` (2026-11-17: read, write, flush and get-info frames in the `block` module, with `serve_block` checking bounds before the device runs. 2026-11-19: unticked, because no driver uses it. `tpt-k-userland-fs-bridge` uses it in its host tests (`cache.rs`, `lib.rs`). `tpt-k-drivers-virtio` has no device I/O yet)
 
 ## Phase 6 — AArch64
 
@@ -27,7 +27,9 @@ Rules: `#![no_std]`, 100% Rust, no C/C++ bindings.
 ## Phase 9 — Hardening
 
 - [ ] Performance benchmarks: IPC latency
+  - 2026-11-19: partly. `docs/perf/host-ipc.md` times endpoint and capability operations in `tpt-k-kernel-ipc`, not the user-space framework in this crate. It excludes the syscall entry and context switches. Open here.
 - [ ] Fuzz the IPC serde path (feeds Phase 5 in the master plan) (partly, 2026-11-17: deterministic mutation tests on the frame decoder; not coverage-guided fuzzing)
+  - 2026-11-19: a seeded mutation campaign of one million iterations passes (`docs/assurance/campaigns/tpt-k-ipc-serde.txt`, commit `bc0a0a6`), and claim `SER-1` is waived as sampled-only. Not coverage-guided, so still open.
   - 2026-11-18: the endpoint and capability-token invariants that IPC relies on are checked in `tpt-k-kernel-ipc` and `tpt-k-ipc-cap` (see `docs/assurance/invariants.md`). Token and service claims are waived as sampled-only. No coverage-guided campaign has been run.
 
 ## Phase 11a — stub cleanup (2026-11-18)

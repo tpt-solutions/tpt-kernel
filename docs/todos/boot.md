@@ -14,7 +14,7 @@ dependencies (dev-dependencies excepted).
 ## Phase 1 — Boot & Hello World
 
 - [x] `tpt-k-boot-efi`: UEFI ABI and wrappers for the boot services the loader uses (2026-11-16); runtime services not yet
-- [x] `tpt-k-boot-fs`: minimal read-only FAT32 driver (2026-11-17: boot sector checks, cluster chains with loop detection, 8.3 and ASCII long-name lookup, whole-file reads through a `BlockRead` trait; host-tested. Long names are ASCII only, and the loader does not use it yet: M1 still reads the ESP through the UEFI file protocol)
+- [x] `tpt-k-boot-fs`: minimal read-only FAT32 driver (2026-11-17: boot sector checks, cluster chains with loop detection, 8.3 and ASCII long-name lookup, whole-file reads through a `BlockRead` trait; host-tested. Long names are ASCII only. The loader does not use the FAT32 driver yet, and reads the ESP through the UEFI file protocol. It uses only the ELF parser from this crate (`tpt_k_boot_fs::elf`, in `tpt-k-boot/src/main.rs`), checked 2026-11-19)
 - [x] `tpt-k-boot`: UEFI app that locates the kernel on the ESP (2026-11-16: `TPTK\KERNEL.ELF`; root server image not yet)
 - [x] Load kernel binary into memory, obtain memory map, exit boot services (2026-11-16: ELF64 PT_LOAD segments at their physical addresses)
 - [x] Define boot info handoff struct (memory map, framebuffer, ACPI RSDP, etc.) (2026-11-17: a versioned record, passed in rdi, with the memory map; 2026-11-17 version 2 adds the ACPI 2.0 RSDP address and the GOP framebuffer (base, size, width, height, stride, pixel format); the layout is mirrored in tpt-k-kernel-mem::bootmap. Absent firmware facts are recorded as zero. Verified by the QEMU smoke test under OVMF, which reports rsdp 0xf77e014 and a 1280x800 BGRX framebuffer)
