@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-boot"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k UEFI bootloader application (scaffold)."
 readme = "README.md"
 keywords = ["uefi", "bootloader", "tpt-k", "x86-64", "elf"]

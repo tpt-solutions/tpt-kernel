@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-hal-usb"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k HAL USB: descriptor parser."
 readme = "README.md"
 keywords = ["usb", "descriptor", "tpt-k", "hardware", "parser"]

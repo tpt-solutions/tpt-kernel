@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-toolchain"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k build planner and tpt-k-build CLI: prints per-layer cargo commands. It does not run cargo yet."
 readme = "README.md"
 keywords = ["build", "cross-compile", "linker", "tpt-k", "cli"]

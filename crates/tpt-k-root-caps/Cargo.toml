@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-root-caps"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k root capabilities: generation, delegation, revocation."
 readme = "README.md"
 keywords = ["capability", "delegation", "revocation", "tpt-k", "security"]

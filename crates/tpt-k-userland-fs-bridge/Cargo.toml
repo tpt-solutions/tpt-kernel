@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-userland-fs-bridge"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k filesystem bridge core: byte-range reads over IPC block devices, with a write-through sector cache."
 readme = "README.md"
 keywords = ["filesystem", "ipc", "bridge", "tpt-k", "fs"]

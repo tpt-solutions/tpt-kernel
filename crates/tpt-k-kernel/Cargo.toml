@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-kernel"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k kernel main binary: early boot entry, stack setup, panic handler."
 readme = "README.md"
 keywords = ["microkernel", "kernel", "x86-64", "tpt-k", "capability"]
@@ -22,3 +22,8 @@ name = "tpt-k-kernel"
 path = "src/main.rs"
 test = false
 doc = false
+
+[features]
+# Fixed APIC timer period, so the boot transcript is the same on every run under
+# the instruction counter. Used by `tpt-k-build replay`; not for real hardware.
+replay = []

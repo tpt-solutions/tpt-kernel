@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-root-spawn"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k root spawn: ELF64 load planning and process lifecycle bookkeeping for the root server."
 readme = "README.md"
 keywords = ["elf", "wasm", "process", "loader", "tpt-k"]

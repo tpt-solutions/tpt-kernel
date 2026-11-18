@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-toolchain-xtask"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k build, check, QEMU smoke test and dependency fetch tasks, run as `cargo xtask`."
 readme = "README.md"
 keywords = ["xtask", "build", "tpt-k", "qemu"]

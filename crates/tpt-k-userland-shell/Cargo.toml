@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-userland-shell"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k shell: command parser and job control."
 readme = "README.md"
 keywords = ["shell", "repl", "cli", "tpt-k", "userland"]

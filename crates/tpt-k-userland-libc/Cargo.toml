@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-userland-libc"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k minimal C library core: memory, string, number, format, errno and path functions."
 readme = "README.md"
 keywords = ["posix", "libc", "ipc", "tpt-k", "shim"]

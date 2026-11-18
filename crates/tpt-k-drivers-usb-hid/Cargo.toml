@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-drivers-usb-hid"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k USB HID driver core: report descriptors and boot keyboard and mouse reports."
 readme = "README.md"
 keywords = ["usb", "hid", "tpt-k", "driver", "input"]

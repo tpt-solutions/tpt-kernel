@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-toolchain-iso"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k boot image assembly: a FAT32 boot-partition writer and a GPT disk wrapper."
 readme = "README.md"
 keywords = ["iso", "uefi", "disk-image", "tpt-k", "bootable"]

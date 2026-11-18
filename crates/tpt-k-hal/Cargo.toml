@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-hal"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k HAL core: common hardware data structures."
 readme = "README.md"
 keywords = ["hal", "hardware", "tpt-k", "firmware", "discovery"]

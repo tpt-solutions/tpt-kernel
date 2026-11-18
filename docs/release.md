@@ -47,11 +47,16 @@ A release is cut only when all of these hold:
 
 Steps 3 to 5 publish the code, so they need an explicit go-ahead each time.
 
+## Decisions
+
+- **Version (decided 2026-11-18):** the first release is `0.1.0`. The version is
+  set once in `[workspace.package]`, and every crate has `version.workspace = true`.
+  A minor release while the major version is 0 may change interfaces, as above.
+- **Record of truth (decided 2026-11-18):** the root `CHANGELOG.md` is the release
+  record. The per-crate changelogs carry the detail for each crate.
+
 ## Open decisions
 
-- The version number of the first release, and whether versions live in
-  `[workspace.package]` or in each crate.
-- Whether the root `CHANGELOG.md` or the per-crate changelogs are the release
-  record of truth. This document assumes the root file summarises them.
 - How to treat the external repos that fail the license gate before a tag. The
-  options are to fix them, or to record a time-limited exception.
+  options are to fix them, or to record a time-limited exception. This needs
+  changes in those repos (see `DEP-AUDIT.md`), so it is not decided here.

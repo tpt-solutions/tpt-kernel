@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-ipc"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k IPC client/server framework."
 readme = "README.md"
 keywords = ["ipc", "microkernel", "tpt-k", "capability", "client-server"]

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-boot-fs"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k minimal read-only FAT32 driver for loading kernel and root images, with 8.3 and ASCII long names."
 readme = "README.md"
 keywords = ["elf", "bootloader", "tpt-k", "uefi", "parser"]

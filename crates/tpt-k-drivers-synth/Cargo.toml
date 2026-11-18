@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 [package]
 name = "tpt-k-drivers-synth"
-version = "0.0.0"
+version.workspace = true
 description = "tpt-k synth: hardware-ID matching against known layouts."
 readme = "README.md"
 keywords = ["tpt-k", "drivers", "hardware-id", "codegen", "synthesis"]
