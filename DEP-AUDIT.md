@@ -91,10 +91,12 @@ Checked with `cargo tree --target all -e all` on 2026-11-18.
   outbound path. `tpt-crypto-rustls`'s README says not to use it to protect real
   traffic until it is audited. `tpt-mcpbox` depends on it by path, so CI needs a
   git dependency before it can build the repo.
-- **Shipped, `tpt-crypto-rustls`:** `rsa` 0.9.10 (RUSTSEC-2023-0071, Marvin). The
-  crate uses it only to verify signatures. The fix is rsa 0.10, which needs
-  digest 0.11 support in `tpt-crypto`. rsa 0.10.0 does not build against the
-  current digests, so that migration comes first.
+- **Fixed locally, `tpt-crypto-rustls` (2026-11-18):** the shipped build moved
+  from `rsa` 0.9.10 to 0.10 (`32eb56c`), with `sha2` 0.11 for the digest traits.
+  `tpt-crypto` did not need a change. RUSTSEC-2023-0071 now reaches only
+  `rsa` 0.9 through the dev-dependency `rustls-rustcrypto` (`e30657b`). The
+  commits are not pushed yet, and `tpt-mcpbox` still pins `1827ad7`, which
+  predates the fix.
 - **Dev-only, `tpt-crypto-rustls`:** the other six advisories come from
   `rustls-rustcrypto` as a dev-dependency, the peer in the handshake tests. They
   are accepted in its `deny.toml` until 2027-02-09 and do not ship.
@@ -103,8 +105,10 @@ Checked with `cargo tree --target all -e all` on 2026-11-18.
 1. Done: `tpt-mcpbox` uses `tpt-crypto-rustls` (see above). Still to do: the
    audit that the README asks for before the provider protects real traffic, and
    a git dependency in place of the path dependency.
-2. Move `tpt-crypto` to digest 0.11 so `rsa` can go to 0.10. That clears the last
-   shipped advisory in `tpt-crypto-rustls`.
+2. Done locally: `rsa` is 0.10 with `sha2` 0.11, so `tpt-crypto` did not need a
+   digest migration. Once `tpt-crypto-rustls` `32eb56c` and `e30657b` are pushed,
+   `tpt-mcpbox` must bump its pinned `rev` to the new head so the shipped build
+   gets the fix. Then its `deny.toml` entry for RUSTSEC-2023-0071 can be removed.
 3. Keep the dev-only acceptances in `tpt-crypto-rustls` until the test peer is
    replaced. They do not affect shipped code.
 4. Have vitals read `deny.toml` ignores, with their reasons, so the CVE count
