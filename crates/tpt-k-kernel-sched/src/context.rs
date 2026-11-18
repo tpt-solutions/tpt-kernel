@@ -25,7 +25,7 @@ pub const ENTRY_WORD: usize = 6;
 ///
 /// `save` must point to a writable `u64` that outlives the switch. `next_rsp`
 /// must be a stack pointer produced by an earlier switch or by
-/// [`initial_frame`], and its stack must still be live.
+/// [`initial_stack`], and its stack must still be live.
 #[cfg(target_arch = "x86_64")]
 #[unsafe(naked)]
 pub unsafe extern "sysv64" fn switch(save: *mut u64, next_rsp: u64) {

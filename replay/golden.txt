@@ -2,19 +2,22 @@
 BdsDxe: starting Boot0001 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
 tpt-k boot: loading TPTK\KERNEL.ELF
 tpt-k boot: entry 0x100000, leaving boot services
-memory: 51966 free frames
+memory: 51768 free frames
 handoff: rsdp at 0xf77e014
 handoff: framebuffer 1280x800 stride 1280 format 2 at 0x80000000
 paging: remap ok
 apic: timer 625000 counts per 10 ms
 Hello tpt-k
-trap 3 (breakpoint) at rip 0x116375
+trap 3 (breakpoint) at rip 0x11a23a
 ioapic: rtc irqs=2
 handles: process tables are isolated
 handles: grant attenuates rights
 errno: failures are negated errno values
 mem: freed object returned its frames
 mem: revoking the last handle reclaimed the object
+mem: unmapped object was freed
+mem: revoking a mapped object removed its mapping
+root: a revoked handle is refused
 caps: begin
 cap: table=0 slot=0 object=3 rights=RWG parent=- origin=-
 cap: table=0 slot=1 object=256 rights=RWG parent=- origin=-
@@ -29,6 +32,7 @@ cap: table=4 slot=4 object=1 rights=R-- parent=1 origin=-
 cap: table=7 slot=0 object=256 rights=RWG parent=- origin=0.1
 cap: table=7 slot=1 object=2 rights=-W- parent=- origin=0.2
 cap: table=8 slot=0 object=2 rights=R-- parent=- origin=0.2
+cap: table=8 slot=1 object=256 rights=R-- parent=- origin=7.0
 cap: table=9 slot=0 object=3 rights=RWG parent=- origin=0.0
 cap: table=9 slot=1 object=3 rights=-W- parent=- origin=0.0
 cap: table=10 slot=0 object=512 rights=R-- parent=- origin=-
@@ -36,7 +40,7 @@ caps: end
 <A><B>hello from ring 3
 user: exit 12648430
 spawn: child in slot 12
-user: fault vector 14 at rip 0x129322 error 0x5
+user: fault vector 14 at rip 0x12f336 error 0x5
 ipc: server got 1 2 3 4
 user: exit 10
 user: exit 0

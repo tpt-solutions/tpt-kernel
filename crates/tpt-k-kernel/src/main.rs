@@ -77,6 +77,10 @@ static mut SHM_ENTRY: [Option<UserEntry>; 2] = [None; 2];
 /// The thread table. Only the running thread touches it.
 static mut SCHED: Scheduler = Scheduler::new();
 
+/// The thread that created each thread slot. A thread may grant handles only to
+/// threads it created, so a grant needs a relationship the creator already holds.
+static mut THREAD_CREATOR: [Option<usize>; MAX_THREADS] = [None; MAX_THREADS];
+
 /// Per-thread context, indexed by scheduler slot. The kernel stack is used for
 /// syscalls and ring-3 interrupts. The root is the address space, which is
 /// loaded into CR3 when the thread is switched in.
@@ -135,6 +139,30 @@ static mut SPAWN_STACKS: [SpawnStack; 2] = [SpawnStack([0; 2048]), SpawnStack([0
 static mut SPAWN_USED: [bool; 2] = [false; 2];
 static mut SPAWN_ENTRY: [Option<UserEntry>; 2] = [None; 2];
 static mut CHILD_ROOTS: [(usize, u64); 2] = [(0, 0); 2];
+/// The address space that spawned children are copied from. It is forked from the
+/// boot space right after paging is set up, before any memory object is mapped,
+/// so a child never inherits a mapping that has no record in `MEM_OBJECTS`.
+static mut SPAWN_TEMPLATE: usize = 0;
+
+/// Forks `SPAWN_TEMPLATE` from the boot space. Must run once, by the bootstrap
+/// thread, before any memory object is mapped.
+fn make_spawn_template() -> Result<(), &'static str> {
+    // SAFETY: called once by the bootstrap thread, before any other thread exists,
+    // so nothing else uses the tables.
+    unsafe {
+        let tables = (*addr_of_mut!(KERNEL_TABLES))
+            .as_mut()
+            .ok_or("no kernel tables")?;
+        tables
+            .select(0)
+            .map_err(|_| "cannot select the boot space")?;
+        let root = tables
+            .fork()
+            .map_err(|_| "cannot fork the spawn template")?;
+        *addr_of_mut!(SPAWN_TEMPLATE) = root;
+    }
+    Ok(())
+}
 
 /// Where a spawned program image is mapped in its child's address space.
 const IMAGE_BASE: u64 = 0x2000_0000;
@@ -159,6 +187,8 @@ static mut DRIVER_ENTRY: Option<UserEntry> = None;
 
 /// The driver: a user thread that waits for the RTC's interrupt through its
 /// interrupt object, then exits with the number of interrupts it saw.
+// SAFETY: entered only through `enter_user`, from a thread whose address space
+// maps this `.user` page. It makes only syscalls, with its arguments in registers.
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn driver_program() -> ! {
@@ -201,6 +231,8 @@ static mut PROCESS_FRAMES: [Frame; 2] = [Frame([0; 512]), Frame([0; 512])];
 static mut ROOTS: [(usize, u64); 4] = [(0, 0); 4];
 
 // Bounds of the user pages, set by the linker script.
+// SAFETY: the linker script defines these symbols. The code only takes their
+// addresses (`addr_of!`) and never reads them as values, so no memory is touched.
 unsafe extern "C" {
     static __user_code_start: u8;
     static __user_code_end: u8;
@@ -245,6 +277,9 @@ const SYS_SEND_BULK: u64 = 14;
 const SYS_IRQ_WAIT: u64 = 15;
 /// Frees a memory object and returns its frames. See [`free_memory`].
 const SYS_MEM_FREE: u64 = 16;
+/// `SYS_UNMAP(handle, vaddr)`: removes the mapping of the object that `handle`
+/// names, at `vaddr` in the calling thread's address space.
+const SYS_UNMAP: u64 = 17;
 
 /// Virtual address where the shared page is mapped. Both demo threads use it.
 /// The memory window: the only addresses a memory object may be mapped at. It
@@ -261,14 +296,31 @@ const MEM_OBJECT_BASE: u32 = 0x100;
 const MAX_MEM_OBJECTS: usize = 8;
 const MAX_OBJECT_PAGES: usize = 4;
 
+/// The most places one memory object may be mapped at once.
+const MAX_MAPPINGS: usize = 4;
+
+/// One place a memory object is mapped: the address space, by its root index,
+/// and the virtual address of the object's first page.
+#[derive(Clone, Copy)]
+struct Mapping {
+    root: usize,
+    vaddr: u64,
+}
+
 /// A memory object: `count` physical pages, mapped in order by `SYS_MAP`.
 #[derive(Clone, Copy)]
 struct MemObject {
     pages: [u64; MAX_OBJECT_PAGES],
     count: usize,
-    /// Set once `SYS_MAP` has mapped the object into an address space. There is
-    /// no unmap yet, so a mapped object cannot be freed.
-    mapped: bool,
+    /// Where the object is mapped. `SYS_MAP` adds an entry and `SYS_UNMAP` removes
+    /// it. An object with no entry can be freed.
+    mappings: [Option<Mapping>; MAX_MAPPINGS],
+}
+
+impl MemObject {
+    fn is_mapped(&self) -> bool {
+        self.mappings.iter().any(Option::is_some)
+    }
 }
 
 static mut MEM_OBJECTS: [Option<MemObject>; MAX_MEM_OBJECTS] = [None; MAX_MEM_OBJECTS];
@@ -369,7 +421,7 @@ fn irq_wait(cap: CapId) -> Result<u64, SysError> {
             // No handler can run between this store and the block, because
             // interrupts are off, so the wake cannot be lost.
             IRQ_WAITER.store(me + 1, Ordering::Relaxed);
-            if !(*addr_of_mut!(SCHED)).block_current() {
+            if !Scheduler::block_current(addr_of_mut!(SCHED)) {
                 IRQ_WAITER.store(0, Ordering::Relaxed);
                 return Err(SysError::Deadlock);
             }
@@ -434,6 +486,13 @@ fn within(start: u64, end: u64, address: u64, len: u64) -> bool {
     address >= start && address.checked_add(len).is_some_and(|e| e <= end)
 }
 
+/// As [`within`], and also 8-byte aligned, for a buffer the kernel reads or writes
+/// as `u64` words. An unaligned `u64` access is undefined behaviour, and a user
+/// program chooses the address.
+fn within_words(start: u64, end: u64, address: u64, len: u64) -> bool {
+    address.is_multiple_of(8) && within(start, end, address, len)
+}
+
 /// The user stack bounds, from the linker script.
 fn user_stack_bounds() -> (u64, u64) {
     (
@@ -442,17 +501,27 @@ fn user_stack_bounds() -> (u64, u64) {
     )
 }
 
+/// Whether `len` bytes at `address` lie in the user stack page, where message
+/// buffers are. Checked before a receive takes a message, so that a refused
+/// buffer leaves the message in place.
+fn user_stack_writable(address: u64, len: u64) -> bool {
+    let (start, end) = user_stack_bounds();
+    within_words(start, end, address, len)
+}
+
 /// Reads four message words from a user buffer. The buffer must lie in the user
 /// stack page.
 fn read_message(address: u64) -> Option<Message> {
     let (start, end) = user_stack_bounds();
-    if !within(start, end, address, MESSAGE_BYTES) {
+    if !within_words(start, end, address, MESSAGE_BYTES) {
         return None;
     }
     let mut message = [0u64; 4];
     for (index, word) in message.iter_mut().enumerate() {
-        // SAFETY: the buffer was checked to lie inside the user stack page, which
-        // is mapped and readable (see `setup_paging`).
+        // SAFETY: the range `address..address + MESSAGE_BYTES` lies inside the user stack page,
+        // which is mapped and readable (see `setup_paging`). NOT SOUND AS WRITTEN: `address` is not
+        // checked for 8-byte alignment, and `read_volatile`/`write_volatile` on a `*const u64`
+        // require it.
         *word = unsafe { ((address + index as u64 * 8) as *const u64).read_volatile() };
     }
     Some(message)
@@ -461,11 +530,13 @@ fn read_message(address: u64) -> Option<Message> {
 /// Writes four message words to a user buffer in the user stack page.
 fn write_message(address: u64, message: Message) -> bool {
     let (start, end) = user_stack_bounds();
-    if !within(start, end, address, MESSAGE_BYTES) {
+    if !within_words(start, end, address, MESSAGE_BYTES) {
         return false;
     }
     for (index, word) in message.iter().enumerate() {
-        // SAFETY: as for `read_message`; the page is also writable.
+        // SAFETY: as for `read_message`; the range is in the writable user stack page. NOT SOUND AS
+        // WRITTEN: `address` is not checked for 8-byte alignment, and
+        // `read_volatile`/`write_volatile` on a `*const u64` require it.
         unsafe { ((address + index as u64 * 8) as *mut u64).write_volatile(*word) };
     }
     true
@@ -476,14 +547,16 @@ fn write_message(address: u64, message: Message) -> bool {
 /// is `RECV_CAP_BYTES` long and lies in the user stack page.
 fn write_received(address: u64, message: Message, transfer: Transfer) -> bool {
     let (start, end) = user_stack_bounds();
-    if !within(start, end, address, RECV_CAP_BYTES) {
+    if !within_words(start, end, address, RECV_CAP_BYTES) {
         return false;
     }
     if !write_message(address, message) {
         return false;
     }
     let handle = transfer.map_or(u64::MAX, |cap| cap.raw());
-    // SAFETY: the range was checked above; the page is writable.
+    // SAFETY: `address..address + RECV_CAP_BYTES` was checked to lie in the writable user stack
+    // page. NOT SOUND AS WRITTEN: `address + MESSAGE_BYTES` is not checked for 8-byte alignment,
+    // and `read_volatile`/`write_volatile` on a `*const u64` require it.
     unsafe { ((address + MESSAGE_BYTES) as *mut u64).write_volatile(handle) };
     true
 }
@@ -610,6 +683,11 @@ fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
             0
         }
         SYS_RECV => {
+            // Check the buffer before the message is taken, so a bad buffer does
+            // not lose it.
+            if !user_stack_writable(a1, MESSAGE_BYTES) {
+                return Err(SysError::Fault);
+            }
             let message = ipc_recv(CapId::from_raw(a0))?;
             if !write_message(a1, message) {
                 return Err(SysError::Fault);
@@ -635,11 +713,13 @@ fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
         }
         SYS_SEND_BULK => {
             let message = read_message(a1).ok_or(SysError::Fault)?;
-            if !in_user_pages(a2, 16) {
+            if !a2.is_multiple_of(8) || !in_user_pages(a2, 16) {
                 return Err(SysError::Fault);
             }
-            // SAFETY: the two words lie in user memory (checked above), which is
-            // mapped in the caller's address space, where this syscall runs.
+            // SAFETY: the two words lie in user memory (checked above), which is mapped in the
+            // caller's address space, where this syscall runs. NOT SOUND AS WRITTEN: `a2` is not
+            // checked for 8-byte alignment, and `read_volatile`/`write_volatile` on a `*const u64`
+            // require it.
             let (source, len) = unsafe {
                 (
                     (a2 as *const u64).read_volatile(),
@@ -651,6 +731,9 @@ fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
         }
         SYS_IRQ_WAIT => irq_wait(CapId::from_raw(a0))?,
         SYS_RECV_CAP => {
+            if !user_stack_writable(a1, RECV_CAP_BYTES) {
+                return Err(SysError::Fault);
+            }
             let (message, transfer) = ipc_recv_transfer(CapId::from_raw(a0))?;
             if !write_received(a1, message, transfer) {
                 return Err(SysError::Fault);
@@ -665,6 +748,10 @@ fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
             free_memory(CapId::from_raw(a0))?;
             0
         }
+        SYS_UNMAP => {
+            unmap_handle(CapId::from_raw(a0), a1)?;
+            0
+        }
         _ => return Err(SysError::NoSys),
     })
 }
@@ -675,6 +762,8 @@ fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
 /// It writes its message, then checks that a receive-only handle cannot send. It
 /// sends a request, receives the reply, and exits with the reply's first word.
 /// Any failed step exits with 1.
+// SAFETY: entered only through `enter_user`, with the send, reply-receive and
+// buffer handles in rdi, rsi and rdx. Its only data access is the 32-byte buffer at rdx.
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn user_program() -> ! {
@@ -734,6 +823,8 @@ extern "C" fn user_program() -> ! {
 /// The process program. Its argument is its number. It stores the number at
 /// `PROCESS_DATA`, yields so the other process can store its own number at the
 /// same address in its own space, then reads its value back and exits with it.
+// SAFETY: entered only through `enter_user` in a process space that maps
+// `PROCESS_DATA` as user-writable. Its only data access is the qword there.
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn process_program() -> ! {
@@ -879,6 +970,51 @@ fn map_into_root(root: usize, vaddr: u64, phys: u64, writable: bool) -> Result<(
     Ok(())
 }
 
+/// Whether any of `count` pages from `vaddr` is already mapped in address space
+/// `root`. A mapping made by `SYS_MAP` replaces a page without a record, so an
+/// address another mapping uses is refused.
+fn address_in_use(root: usize, vaddr: u64, count: usize) -> Result<bool, SysError> {
+    // SAFETY: called from a syscall, with interrupts off, as `map_into_root` is.
+    unsafe {
+        let tables = (*addr_of_mut!(KERNEL_TABLES))
+            .as_mut()
+            .ok_or(SysError::NoMemory)?;
+        tables.select(root).map_err(|_| SysError::NoMemory)?;
+        let used =
+            (0..count).any(|page| tables.translate(vaddr + page as u64 * FRAME_SIZE).is_some());
+        tables.select(0).map_err(|_| SysError::NoMemory)?;
+        Ok(used)
+    }
+}
+
+/// Unmaps `count` pages from `vaddr` in address space `root`, and invalidates each
+/// translation. Every page is tried, and the first failure is returned.
+fn unmap_from_root(root: usize, vaddr: u64, count: usize) -> Result<(), &'static str> {
+    // SAFETY: called from a syscall, with interrupts off, as `map_into_root` is.
+    unsafe {
+        let tables = (*addr_of_mut!(KERNEL_TABLES))
+            .as_mut()
+            .ok_or("no kernel tables")?;
+        tables
+            .select(root)
+            .map_err(|_| "cannot select the address space")?;
+        let mut result = Ok(());
+        for page in 0..count {
+            let address = vaddr + page as u64 * FRAME_SIZE;
+            if tables.unmap_4k(address).is_err() {
+                result = Err("cannot unmap the page");
+            }
+        }
+        tables
+            .select(0)
+            .map_err(|_| "cannot select the boot space")?;
+        for page in 0..count {
+            paging::invlpg(vaddr + page as u64 * FRAME_SIZE);
+        }
+        result
+    }
+}
+
 /// The index of the address space whose root has CR3 value `cr3`. Returns `None`
 /// for an address space the kernel did not create, so that a syscall cannot map
 /// into it.
@@ -898,8 +1034,10 @@ fn root_index_of(cr3: u64) -> Option<usize> {
     }
 }
 
-/// Maps the shared page at `SHARED_VIRT` in the calling thread's address space.
-/// The page is writable if the handle carries WRITE, and read-only otherwise.
+/// Maps the memory object that `cap` names at `vaddr` in the calling thread's
+/// address space, and records the mapping so it can be unmapped. The pages are
+/// writable if the handle carries WRITE, and read-only otherwise. The handle needs
+/// READ. The same object cannot be mapped twice at the same address in one space.
 fn map_handle(cap: CapId, vaddr: u64) -> Result<(), SysError> {
     interrupts::without(|| {
         // SAFETY: interrupts are off, so this thread is the only one using the
@@ -918,12 +1056,61 @@ fn map_handle(cap: CapId, vaddr: u64) -> Result<(), SysError> {
             }
             let writable = table.lookup(cap, Rights::WRITE).is_ok();
             let root = root_index_of((*addr_of_mut!(CONTEXTS))[me].cr3).ok_or(SysError::Invalid)?;
+            if memory
+                .mappings
+                .iter()
+                .flatten()
+                .any(|m| m.root == root && m.vaddr == vaddr)
+            {
+                return Err(SysError::Invalid);
+            }
+            let slot = memory
+                .mappings
+                .iter()
+                .position(Option::is_none)
+                .ok_or(SysError::Full)?;
+            if address_in_use(root, vaddr, memory.count)? {
+                return Err(SysError::Invalid);
+            }
             for (page, &phys) in memory.pages[..memory.count].iter().enumerate() {
-                map_into_root(root, vaddr + page as u64 * FRAME_SIZE, phys, writable)
-                    .map_err(|_| SysError::NoMemory)?;
+                if map_into_root(root, vaddr + page as u64 * FRAME_SIZE, phys, writable).is_err() {
+                    // Undo the pages already mapped, so no unrecorded mapping is left.
+                    let _ = unmap_from_root(root, vaddr, page);
+                    return Err(SysError::NoMemory);
+                }
             }
             if let Some(object) = (*addr_of_mut!(MEM_OBJECTS))[index].as_mut() {
-                object.mapped = true;
+                object.mappings[slot] = Some(Mapping { root, vaddr });
+            }
+            Ok(())
+        }
+    })
+}
+
+/// Removes the mapping of the object that `cap` names at `vaddr` in the calling
+/// thread's address space, made by `SYS_MAP`. The handle needs READ, as to map.
+/// Once the object has no mappings, `SYS_MEM_FREE` can free it.
+fn unmap_handle(cap: CapId, vaddr: u64) -> Result<(), SysError> {
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the
+        // tables and the object table.
+        unsafe {
+            let me = (*addr_of_mut!(SCHED)).current();
+            let object = (*addr_of_mut!(CAP_TABLES))[me].lookup(cap, Rights::READ)?;
+            let index = mem_object_index(object).ok_or(SysError::Invalid)?;
+            let memory = (*addr_of_mut!(MEM_OBJECTS))[index].ok_or(SysError::BadHandle)?;
+            let root = root_index_of((*addr_of_mut!(CONTEXTS))[me].cr3).ok_or(SysError::Invalid)?;
+            let slot = memory
+                .mappings
+                .iter()
+                .position(|m| m.is_some_and(|m| m.root == root && m.vaddr == vaddr))
+                .ok_or(SysError::Invalid)?;
+            // The pages were mapped by `map_handle`, so they are present. A failure
+            // here would mean the tables were changed behind the object's back, and
+            // the record is kept so the mapping is not forgotten.
+            unmap_from_root(root, vaddr, memory.count).map_err(|_| SysError::Invalid)?;
+            if let Some(object) = (*addr_of_mut!(MEM_OBJECTS))[index].as_mut() {
+                object.mappings[slot] = None;
             }
             Ok(())
         }
@@ -958,8 +1145,8 @@ fn create_memory(pages: u64) -> Result<CapId, SysError> {
 ///
 /// Every capability to the object is revoked first, in every table, so no handle
 /// can reach the object slot once it is free and may be reused. An object that
-/// has been mapped cannot be freed, because nothing unmaps it yet, and object 0,
-/// the demo's static page, is never freed.
+/// is still mapped cannot be freed, so its holder unmaps it with `SYS_UNMAP` first.
+/// Object 0, the demo's static page, is never freed.
 fn free_memory(cap: CapId) -> Result<(), SysError> {
     const SLOTS: usize = 8;
     interrupts::without(|| {
@@ -973,7 +1160,7 @@ fn free_memory(cap: CapId) -> Result<(), SysError> {
                 return Err(SysError::Invalid);
             }
             let memory = (*addr_of_mut!(MEM_OBJECTS))[index].ok_or(SysError::BadHandle)?;
-            if memory.mapped {
+            if memory.is_mapped() {
                 return Err(SysError::Busy);
             }
             let tables = &mut *addr_of_mut!(CAP_TABLES);
@@ -1006,7 +1193,10 @@ fn free_memory(cap: CapId) -> Result<(), SysError> {
 ///
 /// # Safety
 ///
-/// Interrupts must be off, so nothing else uses the allocator or the table.
+/// Interrupts must be off, so nothing else uses the allocator or the table. `count`
+/// must be at most `MAX_OBJECT_PAGES`, and `FRAME_ALLOC` must be set. If `payload` is
+/// `Some((source, len))`, then `source..source + len` must be readable in the current
+/// address space, and `len <= count * FRAME_SIZE`.
 unsafe fn allocate_object(
     count: usize,
     payload: Option<(u64, usize)>,
@@ -1023,7 +1213,7 @@ unsafe fn allocate_object(
         let mut memory = MemObject {
             pages: [0; MAX_OBJECT_PAGES],
             count,
-            mapped: false,
+            mappings: [None; MAX_MAPPINGS],
         };
         for page in 0..count {
             match alloc.allocate() {
@@ -1055,7 +1245,9 @@ unsafe fn allocate_object(
 ///
 /// # Safety
 ///
-/// Interrupts must be off, and `index` must be the slot `allocate_object` chose.
+/// Interrupts must be off, and `index` must be the slot `allocate_object` chose. That
+/// slot must still be empty, because a successful call overwrites it, and `memory` must
+/// be the value `allocate_object` returned for it.
 unsafe fn mint_object(
     thread: usize,
     index: usize,
@@ -1116,7 +1308,10 @@ fn send_bulk(channel: CapId, message: Message, source: u64, len: u64) -> Result<
         // SAFETY: interrupts are off. The thread's own table is used only here.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
-            let _ = (*addr_of_mut!(CAP_TABLES))[me].revoke(temporary);
+            // Delete the temporary handle without revoking. The receiver's copy
+            // keeps its derivation: `delete_across` re-links it to the temporary's
+            // own origin, so a later revoke of the sender's tree does not reach it.
+            let _ = delete_across(&mut *addr_of_mut!(CAP_TABLES), me, temporary);
         }
     });
     sent
@@ -1138,7 +1333,7 @@ fn yield_now() -> bool {
         // SAFETY: interrupts are off, so this is the only code using the table.
         // The other threads' stacks are statics that were set up before their
         // first switch.
-        unsafe { (*addr_of_mut!(SCHED)).yield_now() }
+        unsafe { Scheduler::yield_now(addr_of_mut!(SCHED)) }
     })
 }
 
@@ -1161,7 +1356,7 @@ fn install_context(slot: usize) {
     syscall::set_kernel_stack(context.kstack_top);
     if paging::read_cr3() != context.cr3 {
         // SAFETY: every context's root maps the kernel's code, data and stacks
-        // (each space is a copy of the boot space), so execution continues.
+        // (each space is a copy of the spawn template), so execution continues.
         unsafe { paging::load_root(context.cr3) };
     }
 }
@@ -1173,9 +1368,11 @@ fn spawn_thread(stack: &mut [u64], entry: u64, cr3: u64) -> Result<usize, &'stat
     // else touches the table.
     let slot = unsafe { (*addr_of_mut!(SCHED)).spawn(stack, entry) }
         .map_err(|_| "could not start a thread")?;
-    // SAFETY: as above.
+    // SAFETY: as above. The creator is the running thread, which is the only
+    // thread that may grant handles to the new one.
     unsafe {
         (*addr_of_mut!(CONTEXTS))[slot] = Context { kstack_top, cr3 };
+        (*addr_of_mut!(THREAD_CREATOR))[slot] = Some((*addr_of_mut!(SCHED)).current());
     }
     Ok(slot)
 }
@@ -1207,7 +1404,7 @@ fn finish() -> ! {
     interrupts::without(|| {
         // SAFETY: interrupts are off, and the thread is the running one. It exits
         // for good here.
-        unsafe { (*addr_of_mut!(SCHED)).exit_current() }
+        unsafe { Scheduler::exit_current(addr_of_mut!(SCHED)) }
     });
     qemu::halt_forever()
 }
@@ -1240,6 +1437,11 @@ fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result
                 .get_mut(object.0 as usize)
                 .ok_or(SysError::Invalid)?;
             let waiting = endpoint.next_receiver();
+            // With no receiver waiting, the send blocks. Refuse it now, before the
+            // endpoint or any table changes, if no other thread could run.
+            if waiting.is_none() && !(*addr_of_mut!(SCHED)).can_block() {
+                return Err(SysError::Deadlock);
+            }
             let stored = match (transfer, waiting) {
                 (Some(handle), Some(receiver)) => Some(install_from(me, handle, receiver)?),
                 (other, _) => other,
@@ -1262,7 +1464,7 @@ fn ipc_send_transfer(cap: CapId, message: Message, transfer: Transfer) -> Result
                     Ok(())
                 }
                 SendOutcome::Blocked => {
-                    if sched.block_current() {
+                    if Scheduler::block_current(addr_of_mut!(SCHED)) {
                         Ok(())
                     } else {
                         Err(SysError::Deadlock)
@@ -1310,6 +1512,11 @@ fn ipc_recv_transfer(cap: CapId) -> Result<(Message, Transfer), SysError> {
                 .get_mut(object.0 as usize)
                 .ok_or(SysError::Invalid)?;
             let sched = &mut *addr_of_mut!(SCHED);
+            // With no sender waiting, the receive blocks. Refuse it now if no other
+            // thread could run, before the receive queue changes.
+            if endpoint.waiting_senders() == 0 && !sched.can_block() {
+                return Err(SysError::Deadlock);
+            }
             match endpoint
                 .receive(sched.current())
                 .map_err(|_| SysError::Full)?
@@ -1328,13 +1535,17 @@ fn ipc_recv_transfer(cap: CapId) -> Result<(Message, Transfer), SysError> {
                     Ok((message, installed?))
                 }
                 RecvOutcome::Blocked => {
-                    if !sched.block_current() {
+                    if !Scheduler::block_current(addr_of_mut!(SCHED)) {
                         return Err(SysError::Deadlock);
                     }
-                    // The sender installed the copy before waking us.
-                    endpoint
-                        .take_delivery_transfer(sched.current())
-                        .ok_or(SysError::Invalid)
+                    // Other threads ran while this one was blocked, so the endpoint
+                    // and the scheduler are taken again rather than held across the
+                    // switch. The sender installed the copy before waking us.
+                    let endpoint = (*addr_of_mut!(ENDPOINTS))
+                        .get_mut(object.0 as usize)
+                        .ok_or(SysError::Invalid)?;
+                    let me = (*addr_of_mut!(SCHED)).current();
+                    endpoint.take_delivery_transfer(me).ok_or(SysError::Invalid)
                 }
             }
         }
@@ -1364,6 +1575,11 @@ fn grant_handle(handle: CapId, target: u64, rights: u64) -> Result<u64, SysError
                 return Err(SysError::Invalid);
             }
             let me = sched.current();
+            // Consent: the caller must have created the target. Nothing else may push
+            // a handle into another thread's table.
+            if (*addr_of_mut!(THREAD_CREATOR))[target] != Some(me) {
+                return Err(SysError::Denied);
+            }
             let source = (*addr_of_mut!(CAP_TABLES))[me];
             let copy = grant(
                 &source,
@@ -1415,9 +1631,64 @@ fn release_handles() {
     reclaim_unreferenced_objects();
 }
 
-/// Frees each memory object that is not mapped and that no thread's table holds a
-/// handle to, and returns its frames. Object 0, the demo's static page, is never
-/// freed. Must be called from a thread, not from an interrupt.
+/// Writes four words at `vaddr` in address space `root`, through the frame that
+/// backs them, so that the bootstrap can prepare a buffer in another space. The
+/// page must be mapped and aligned. Must be called with interrupts off.
+fn write_words_in_root(root: usize, vaddr: u64, words: [u64; 4]) -> Result<(), &'static str> {
+    if !vaddr.is_multiple_of(8) {
+        return Err("buffer is not aligned");
+    }
+    // SAFETY: interrupts are off, so this is the only code using the tables. The
+    // frame is written through the identity map, which covers every frame the
+    // kernel hands to a space.
+    unsafe {
+        let tables = (*addr_of_mut!(KERNEL_TABLES))
+            .as_mut()
+            .ok_or("no kernel tables")?;
+        tables.select(root).map_err(|_| "cannot select the space")?;
+        let phys = tables.translate(vaddr);
+        tables
+            .select(0)
+            .map_err(|_| "cannot select the boot space")?;
+        let phys = phys.ok_or("buffer is not mapped")?;
+        for (index, word) in words.iter().enumerate() {
+            ((phys + index as u64 * 8) as *mut u64).write(*word);
+        }
+    }
+    Ok(())
+}
+
+/// Gives child address space `root` its own user stack. Forking copies the leaf
+/// entries of the spawn template, so without this a child would map the same stack
+/// frames as the boot space's threads, and could read and write them. Each page is
+/// given a new zeroed frame. Must be called with interrupts off.
+fn give_fresh_user_stack(root: usize) -> Result<(), SysError> {
+    let (start, end) = user_stack_bounds();
+    if !start.is_multiple_of(FRAME_SIZE) {
+        return Err(SysError::NoMemory);
+    }
+    let mut vaddr = start;
+    while vaddr < end {
+        // SAFETY: interrupts are off, so this is the only use of the allocator. The
+        // frame is zeroed through the identity map, which covers every frame the
+        // allocator returns.
+        let phys = unsafe {
+            let alloc = (*addr_of_mut!(FRAME_ALLOC))
+                .as_mut()
+                .ok_or(SysError::NoMemory)?;
+            let frame = alloc.allocate().ok_or(SysError::NoMemory)?;
+            core::ptr::write_bytes(frame.start() as *mut u8, 0, FRAME_SIZE as usize);
+            frame.start()
+        };
+        map_into_root(root, vaddr, phys, true).map_err(|_| SysError::NoMemory)?;
+        vaddr += FRAME_SIZE;
+    }
+    Ok(())
+}
+
+/// Frees each memory object that no thread's table holds a handle to, after
+/// removing its mappings, and returns its frames. Object 0, the demo's static page,
+/// is never freed. Must be called from a thread, not from an interrupt.
 fn reclaim_unreferenced_objects() {
     const SLOTS: usize = 8;
     interrupts::without(|| {
@@ -1429,9 +1700,6 @@ fn reclaim_unreferenced_objects() {
                 let Some(memory) = (*addr_of_mut!(MEM_OBJECTS))[index] else {
                     continue;
                 };
-                if memory.mapped {
-                    continue;
-                }
                 let object = ObjectId(MEM_OBJECT_BASE + index as u32);
                 let referenced = tables.iter().any(|table| {
                     (0..SLOTS).any(|slot| {
@@ -1442,6 +1710,11 @@ fn reclaim_unreferenced_objects() {
                 });
                 if referenced {
                     continue;
+                }
+                // No handle is left, so no thread may keep reaching the object. Its
+                // mappings are removed first, then its frames are returned.
+                for mapping in memory.mappings.iter().flatten() {
+                    let _ = unmap_from_root(mapping.root, mapping.vaddr, memory.count);
                 }
                 (*addr_of_mut!(MEM_OBJECTS))[index] = None;
                 if let Some(alloc) = (*addr_of_mut!(FRAME_ALLOC)).as_mut() {
@@ -1540,6 +1813,67 @@ fn reclaim_self_test() -> bool {
         return false;
     }
     free_frame_count() == Some(before)
+}
+
+/// Maps a one-page memory object into the boot space, and checks that it cannot be
+/// freed while mapped, that `SYS_UNMAP` removes the mapping once and no more, and
+/// that the object is freed and its frame returned after the unmap.
+fn unmap_self_test() -> bool {
+    let Some(before) = free_frame_count() else {
+        return false;
+    };
+    let handle = syscall_dispatch(SYS_MEM_CREATE, 1, 0, 0);
+    if is_error(handle) {
+        return false;
+    }
+    let vaddr = MEM_WINDOW_END - FRAME_SIZE;
+    let mapped = syscall_dispatch(SYS_MAP, handle, vaddr, 0) == 0;
+    let busy = syscall_dispatch(SYS_MEM_FREE, handle, 0, 0) == SysError::Busy.code();
+    let unmapped = syscall_dispatch(SYS_UNMAP, handle, vaddr, 0) == 0;
+    let again = syscall_dispatch(SYS_UNMAP, handle, vaddr, 0) == SysError::Invalid.code();
+    let freed = syscall_dispatch(SYS_MEM_FREE, handle, 0, 0) == 0;
+    mapped && busy && unmapped && again && freed && free_frame_count() == Some(before)
+}
+
+/// Maps a one-page object, then revokes its only handle. The revoke must remove the
+/// mapping as well as free the frame, so the page is no longer mapped in the boot
+/// space afterwards.
+fn revoke_mapped_self_test() -> bool {
+    let Some(before) = free_frame_count() else {
+        return false;
+    };
+    let handle = syscall_dispatch(SYS_MEM_CREATE, 1, 0, 0);
+    if is_error(handle) {
+        return false;
+    }
+    let vaddr = MEM_WINDOW_END - 2 * FRAME_SIZE;
+    if syscall_dispatch(SYS_MAP, handle, vaddr, 0) != 0 {
+        return false;
+    }
+    if syscall_dispatch(SYS_REVOKE, handle, 0, 0) != 0 {
+        return false;
+    }
+    let still_mapped = matches!(address_in_use(0, vaddr, 1), Ok(true));
+    free_frame_count() == Some(before) && !still_mapped
+}
+
+/// Checks the rule that the root thread relies on to drop its authority: after a
+/// handle is revoked, using it is refused, and its table no longer resolves it.
+fn root_drop_self_test() -> bool {
+    // SAFETY: called by the bootstrap thread before the demo threads run.
+    let handle = match unsafe { (*addr_of_mut!(CAP_TABLES))[0].mint(ObjectId(2), Rights::ALL) } {
+        Ok(handle) => handle,
+        Err(_) => return false,
+    };
+    if syscall_dispatch(SYS_REVOKE, handle.raw(), 0, 0) != 0 {
+        return false;
+    }
+    let refused =
+        syscall_dispatch(SYS_MAP, handle.raw(), MEM_WINDOW_START, 0) == SysError::BadHandle.code();
+    // SAFETY: as above.
+    let gone = unsafe { (*addr_of_mut!(CAP_TABLES))[0].lookup(handle, Rights::READ) }
+        == Err(CapError::InvalidHandle);
+    refused && gone
 }
 
 /// Prints the live capability graph, one line per capability, between
@@ -1740,6 +2074,8 @@ fn user_fault(vector: u64, rip: u64, error: u64) -> ! {
 /// A user program that reads address 0, which no user mapping covers. The read
 /// faults in ring 3. The `ud2` after it is not reached; if it were, it would
 /// fault too, with another vector, and the smoke test would notice.
+// SAFETY: it reads address 0, which no user mapping covers, so it faults by design.
+// Only `fault_thread` enters it.
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn fault_program() -> ! {
@@ -1775,9 +2111,12 @@ extern "C" fn process1_entry() -> ! {
 }
 
 /// Zero-copy sender. Arguments: the memory capability, the channel send handle,
-/// and a buffer whose first word is the receiver's slot. It maps the shared page,
-/// writes the marker, grants a read-only copy of the memory capability to the
-/// receiver, and sends that handle over the channel.
+/// and a buffer whose first word is the read-only copy's handle, already granted to
+/// the receiver by the bootstrap thread. It maps the shared page, writes the marker,
+/// and sends that handle over the channel. It grants nothing itself: a thread may
+/// grant only to threads it created.
+// SAFETY: entered only through `enter_user`. It reads its buffer at rdx, and writes
+// the shared page only after SYS_MAP has succeeded (the `jnz` skips the store).
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn shm_sender() -> ! {
@@ -1793,14 +2132,6 @@ extern "C" fn shm_sender() -> ! {
         "jnz 9f",
         "mov rax, {shared}",
         "mov qword ptr [rax], {marker}",
-        "mov rdi, r12",
-        "mov rsi, qword ptr [r14]",
-        "mov edx, 1",
-        "mov eax, {grant}",
-        "syscall",
-        "cmp rax, -4096",
-        "ja 9f",
-        "mov qword ptr [r14], rax",
         "mov rdi, r13",
         "mov rsi, r14",
         "mov eax, {send}",
@@ -1819,7 +2150,6 @@ extern "C" fn shm_sender() -> ! {
         shared = const SHARED_VIRT,
         marker = const SHM_MARKER,
         map = const SYS_MAP,
-        grant = const SYS_GRANT,
         send = const SYS_SEND,
         exit = const SYS_EXIT,
     )
@@ -1828,6 +2158,8 @@ extern "C" fn shm_sender() -> ! {
 /// Zero-copy receiver. Arguments: the channel receive handle and a buffer. It
 /// receives the read-only handle, maps the shared page with it, and exits with
 /// the value the sender wrote. The page was never copied.
+// SAFETY: entered only through `enter_user`. It reads its buffer at rsi, and reads
+// the shared page only after SYS_MAP has succeeded (the `jnz` skips the load).
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn shm_receiver() -> ! {
@@ -1898,7 +2230,7 @@ fn grant_shared_memory(
         (*addr_of_mut!(MEM_OBJECTS))[0] = Some(MemObject {
             pages: [addr_of_mut!(SHARED_FRAME) as u64, 0, 0, 0],
             count: 1,
-            mapped: false,
+            mappings: [None; MAX_MAPPINGS],
         });
         let memory = tables[0]
             .mint(MEMORY_OBJECT, Rights::ALL)
@@ -1946,6 +2278,9 @@ const _: () = assert!(SYS_EXIT == 2);
 /// all-rights handle, narrowed to READ, and then sends the message. Then it
 /// spawns a child from `SPAWN_IMAGE`, with READ on the same channel, which
 /// exits with 7.
+// SAFETY: entered only through `root_thread_entry`. The message buffer is at rdx,
+// the descriptors are pushed on its own user stack, and the window page is written
+// only after SYS_MAP has succeeded.
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn root_program() -> ! {
@@ -2010,6 +2345,19 @@ extern "C" fn root_program() -> ! {
         "syscall",
         "cmp rax, -4096",
         "ja 9f",
+        // Drop the root's authority over the root channel: revoke the handle, with
+        // the copies made from it. Using the revoked handle must then be refused.
+        "mov rdi, r12",
+        "mov eax, {revoke}",
+        "syscall",
+        "test rax, rax",
+        "jnz 9f",
+        "mov rdi, r12",
+        "mov rsi, {window}",
+        "mov eax, {map}",
+        "syscall",
+        "cmp rax, {bad_handle}",
+        "jne 9f",
         // Exit with the value read back from the object's second page.
         "mov rcx, {second_page}",
         "mov rdi, qword ptr [rcx]",
@@ -2023,6 +2371,8 @@ extern "C" fn root_program() -> ! {
         "jmp 8b",
         spawn = const SYS_SPAWN,
         spawn_image = const SYS_SPAWN_IMAGE,
+        revoke = const SYS_REVOKE,
+        bad_handle = const SysError::BadHandle.code(),
         mem_create = const SYS_MEM_CREATE,
         map = const SYS_MAP,
         window = const MEM_WINDOW_START,
@@ -2038,6 +2388,8 @@ extern "C" fn root_program() -> ! {
 
 /// Spawned child. Its arguments: a read-only channel handle and a buffer. It
 /// receives one message and exits with its first word.
+// SAFETY: entered only through the spawn entry point in a child space. It reads
+// its buffer at rsi, and reads the window pages only after SYS_MAP has succeeded.
 #[unsafe(naked)]
 #[unsafe(link_section = ".user")]
 extern "C" fn child_program() -> ! {
@@ -2130,17 +2482,40 @@ extern "C" fn spawned_1() -> ! {
 }
 
 /// Creates a child thread for program `program`, in a new address space (a copy
-/// of the boot space), and gives it a read-only copy of `handle` from the caller.
+/// of `SPAWN_TEMPLATE`), and gives it a read-only copy of `handle` from the caller.
 /// The child starts at its program's entry, and gets the copy as its first
 /// argument. Returns the child's thread slot.
+/// Refuses a spawn whose handle the calling thread cannot grant with `rights`.
+/// The check runs before the child thread exists, because a spawn that failed after
+/// its thread was created would leave a thread with no entry to run.
+fn check_spawn_grant(handle: CapId, rights: Rights) -> Result<(), SysError> {
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the
+        // capability tables.
+        unsafe {
+            let me = (*addr_of_mut!(SCHED)).current();
+            let held = (*addr_of_mut!(CAP_TABLES))[me]
+                .rights_of(handle)
+                .map_err(SysError::from)?;
+            if !held.contains(Rights::GRANT) || !held.contains(rights) {
+                return Err(SysError::Denied);
+            }
+            Ok(())
+        }
+    })
+}
+
 fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, SysError> {
     let rights = Rights::from_bits(rights).ok_or(SysError::Invalid)?;
+    check_spawn_grant(handle, rights)?;
     if program != 0 {
         return Err(SysError::Invalid);
     }
     interrupts::without(|| {
-        // SAFETY: interrupts are off, so this thread is the only one using the
-        // tables and the spawn state.
+        // SAFETY: interrupts are off, so this thread is the only one using the tables and the spawn
+        // state. NOT SOUND AS WRITTEN: `tables` (a `&mut` to KERNEL_TABLES) stays live across
+        // `give_fresh_user_stack`, which makes a second `&mut` to KERNEL_TABLES in `map_into_root`.
+        // This is an aliasing hazard; no misbehaviour was observed.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
             let index = (*addr_of_mut!(SPAWN_USED))
@@ -2150,9 +2525,12 @@ fn spawn_child(program: u64, handle: CapId, rights: u64) -> Result<usize, SysErr
             let tables = (*addr_of_mut!(KERNEL_TABLES))
                 .as_mut()
                 .ok_or(SysError::NoMemory)?;
-            tables.select(0).map_err(|_| SysError::NoMemory)?;
+            tables
+                .select(*addr_of_mut!(SPAWN_TEMPLATE))
+                .map_err(|_| SysError::NoMemory)?;
             let root = tables.fork().map_err(|_| SysError::NoMemory)?;
             let cr3 = tables.root_address_of(root);
+            give_fresh_user_stack(root)?;
             (*addr_of_mut!(CHILD_ROOTS))[index] = (root, cr3);
 
             let stack = &mut (*addr_of_mut!(SPAWN_STACKS))[index].0;
@@ -2204,14 +2582,15 @@ fn spawn_image(descriptor: u64) -> Result<usize, SysError> {
     let in_user_pages = |address: u64, len: u64| {
         within(code_start, code_end, address, len) || within(stack_start, stack_end, address, len)
     };
-    if !in_user_pages(descriptor, 32) {
+    if !descriptor.is_multiple_of(8) || !in_user_pages(descriptor, 32) {
         return Err(SysError::Fault);
     }
     let mut words = [0u64; 4];
     for (index, word) in words.iter_mut().enumerate() {
-        // SAFETY: the descriptor lies inside the caller's user pages (checked
-        // above), which are mapped and readable in the caller's address space,
-        // and this syscall runs in that space.
+        // SAFETY: the descriptor lies inside the caller's user pages (checked above), which are
+        // mapped and readable in the caller's address space, and this syscall runs in that space.
+        // NOT SOUND AS WRITTEN: `descriptor` is not checked for 8-byte alignment, and
+        // `read_volatile`/`write_volatile` on a `*const u64` require it.
         *word = unsafe { ((descriptor + index as u64 * 8) as *const u64).read_volatile() };
     }
     let [image, length, handle, rights_bits] = words;
@@ -2219,9 +2598,12 @@ fn spawn_image(descriptor: u64) -> Result<usize, SysError> {
         return Err(SysError::Fault);
     }
     let rights = Rights::from_bits(rights_bits).ok_or(SysError::Invalid)?;
+    check_spawn_grant(CapId::from_raw(handle), rights)?;
     interrupts::without(|| {
-        // SAFETY: interrupts are off, so this thread is the only one using the
-        // tables, the image pages and the spawn state.
+        // SAFETY: interrupts are off, so this thread is the only one using the tables, the image
+        // pages and the spawn state. NOT SOUND AS WRITTEN: `tables` (a `&mut` to KERNEL_TABLES)
+        // stays live across `give_fresh_user_stack`, which makes a second `&mut` to KERNEL_TABLES
+        // in `map_into_root`. This is an aliasing hazard; no misbehaviour was observed.
         unsafe {
             let me = (*addr_of_mut!(SCHED)).current();
             let index = (*addr_of_mut!(SPAWN_USED))
@@ -2231,11 +2613,17 @@ fn spawn_image(descriptor: u64) -> Result<usize, SysError> {
             let tables = (*addr_of_mut!(KERNEL_TABLES))
                 .as_mut()
                 .ok_or(SysError::NoMemory)?;
-            tables.select(0).map_err(|_| SysError::NoMemory)?;
+            tables
+                .select(*addr_of_mut!(SPAWN_TEMPLATE))
+                .map_err(|_| SysError::NoMemory)?;
             let root = tables.fork().map_err(|_| SysError::NoMemory)?;
             let cr3 = tables.root_address_of(root);
+            give_fresh_user_stack(root)?;
             (*addr_of_mut!(CHILD_ROOTS))[index] = (root, cr3);
 
+            let tables = (*addr_of_mut!(KERNEL_TABLES))
+                .as_mut()
+                .ok_or(SysError::NoMemory)?;
             // Copy the image into the slot's page, then map that page into the
             // child only. The identity mapping makes the page writable here.
             let page = addr_of_mut!((*addr_of_mut!(IMAGE_PAGES))[index].0) as u64;
@@ -2316,7 +2704,9 @@ static mut BOOT_STACK: BootStack = BootStack([0; STACK_SIZE]);
 /// # Safety
 ///
 /// Called once by the boot loader. It only sets `rsp` and calls `kmain`, so it
-/// needs no valid stack of its own.
+/// needs no valid stack of its own. `rdi` is left untouched, so `kmain` receives the
+/// handoff address that the loader passed in it. That address must be zero or the
+/// address of a record that `bootmap::read` accepts.
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 pub unsafe extern "sysv64" fn _start() -> ! {
@@ -2400,6 +2790,9 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         Ok(root) => root,
         Err(message) => fail(message),
     };
+    if let Err(message) = make_spawn_template() {
+        fail(message);
+    }
     serial::write_str("paging: remap ok\n");
     pic::init();
     apic::enable();
@@ -2452,7 +2845,18 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         (*addr_of_mut!(PROCESS_ENTRY)) = [Some(process_entry), Some(process_entry)];
     }
 
+    // SAFETY: `setup_paging` has written ROOTS, and nothing writes it afterwards.
     let roots = unsafe { *addr_of_mut!(ROOTS) };
+    // Each process and shared-memory space is separate from the boot space, so each
+    // gets its own user stack. The bootstrap writes the shared-memory sender's buffer
+    // into its stack after this, through `write_words_in_root`.
+    // SAFETY: called by the bootstrap thread before the threads run, with
+    // interrupts off.
+    for root in roots {
+        give_fresh_user_stack(root.0).unwrap_or_else(|_| fail("process stack"));
+    }
+    // SAFETY: the addresses are taken of distinct statics, and nothing is borrowed
+    // until the loop below turns each one into a reference, one at a time.
     let threads: [(*mut [u64], u64, u64); 8] = unsafe {
         [
             (
@@ -2537,6 +2941,8 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     }
     // The driver thread holds the RTC's interrupt object. It waits there, and
     // the RTC is started only now, so the boot check's interrupts are not counted.
+    // SAFETY: STACK_DRIVER is handed to the driver thread here, before any demo
+    // thread runs, so no other code uses it.
     let driver_stack = unsafe { &mut (*addr_of_mut!(STACK_DRIVER)).0 };
     let driver_slot = spawn_thread(
         driver_stack,
@@ -2545,6 +2951,7 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     )
     .unwrap_or_else(|e| fail(e));
     // A thread that faults in ring 3 is ended by the fault handler, not the kernel.
+    // SAFETY: as for `driver_stack`: STACK_FAULT is handed to the fault thread here.
     let fault_stack = unsafe { &mut (*addr_of_mut!(STACK_FAULT)).0 };
     spawn_thread(
         fault_stack,
@@ -2559,6 +2966,8 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
             .mint(IRQ_OBJECT, Rights::READ)
             .unwrap_or_else(|_| fail("cannot mint the interrupt capability"))
     };
+    // SAFETY: DRIVER_ENTRY is written before the driver thread first runs, and
+    // nothing else reads or writes it.
     unsafe {
         *addr_of_mut!(DRIVER_ENTRY) = Some(UserEntry {
             entry: driver_program as *const () as usize as u64,
@@ -2575,9 +2984,22 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         grant_shared_memory(sender_slot, receiver_slot).unwrap_or_else(|e| fail(e));
     let sender_buffer = user_stack_top - 1024;
     let receiver_buffer = user_stack_top - 512;
-    if !write_message(sender_buffer, [receiver_slot as u64, 0, 0, 0]) {
-        fail("cannot prepare the sender buffer");
+    // The bootstrap thread created both zero-copy threads, so it grants the
+    // read-only copy to the receiver. The sender only sends that copy's handle.
+    // SAFETY: called by the bootstrap thread before the threads run.
+    let copy = unsafe {
+        let source = (*addr_of_mut!(CAP_TABLES))[sender_slot];
+        grant(
+            &source,
+            sender_slot,
+            memory,
+            &mut (*addr_of_mut!(CAP_TABLES))[receiver_slot],
+            Rights::READ,
+        )
     }
+    .unwrap_or_else(|_| fail("cannot grant the read-only page"));
+    write_words_in_root(roots[2].0, sender_buffer, [copy.raw(), 0, 0, 0])
+        .unwrap_or_else(|e| fail(e));
     // SAFETY: as above; the zero-copy threads read these when they first run.
     unsafe {
         (*addr_of_mut!(SHM_ENTRY)) = [
@@ -2618,6 +3040,24 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         fail("revoking the last handle did not reclaim the object");
     }
     serial::write_str("mem: revoking the last handle reclaimed the object\n");
+    if !unmap_self_test() {
+        fail("unmapping did not allow the object to be freed");
+    }
+    serial::write_str("mem: unmapped object was freed\n");
+    if !revoke_mapped_self_test() {
+        fail("revoking a mapped object did not remove its mapping");
+    }
+    serial::write_str(
+        "mem: revoking a mapped object removed its mapping
+",
+    );
+    if !root_drop_self_test() {
+        fail("a revoked handle was still usable");
+    }
+    serial::write_str(
+        "root: a revoked handle is refused
+",
+    );
 
     // SAFETY: as above; the user thread reads this when it first runs.
     unsafe {

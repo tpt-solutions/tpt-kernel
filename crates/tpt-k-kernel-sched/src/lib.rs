@@ -132,28 +132,42 @@ impl Scheduler {
     ///
     /// # Safety
     ///
-    /// Must be called from the running thread, with `self` being the table that
-    /// all threads share. The stacks of the threads must be live.
+    /// Must be called from the running thread, with `table` pointing at the table
+    /// that all threads share. The stacks of the threads must be live. No reference
+    /// into the table may be live across this call: the other threads use the table
+    /// while this one is switched out, so the switch works through raw pointers.
     #[cfg(target_arch = "x86_64")]
-    pub unsafe fn yield_now(&mut self) -> bool {
-        let Some(next) = self.pick_next(self.current) else {
-            return false;
+    pub unsafe fn yield_now(table: *mut Self) -> bool {
+        let (save, next_rsp, hook, next) = {
+            // SAFETY: `table` is the shared table, used only by the running thread
+            // here. This reference ends before the switch.
+            let s = unsafe { &mut *table };
+            let Some(next) = s.pick_next(s.current) else {
+                return false;
+            };
+            let cur = s.current;
+            if next == cur {
+                return false;
+            }
+            s.current = next;
+            let next_rsp = s.threads[next].rsp;
+            let hook = s.switch_hook;
+            // The save slot is named by a raw pointer, so no reference outlives
+            // the switch.
+            (
+                core::ptr::addr_of_mut!((*table).threads[cur].rsp),
+                next_rsp,
+                hook,
+                next,
+            )
         };
-        let cur = self.current;
-        if next == cur {
-            return false;
-        }
-        self.current = next;
-        let save: *mut u64 = &mut self.threads[cur].rsp;
-        let next_rsp = self.threads[next].rsp;
-        if let Some(hook) = self.switch_hook {
+        if let Some(hook) = hook {
             hook(next);
         }
         // SAFETY: `save` points into the table and outlives the switch. The
-        // table is only touched by running threads, one at a time, so the
-        // pointer and `self` do not race. `next_rsp` was written by `spawn` or
-        // by an earlier switch, and its stack is live (see the function
-        // contract).
+        // table is only touched by running threads, one at a time. `next_rsp` was
+        // written by `spawn` or by an earlier switch, and its stack is live (see
+        // the function contract).
         unsafe { context::switch(save, next_rsp) };
         true
     }
@@ -168,6 +182,14 @@ impl Scheduler {
         }
     }
 
+    /// Whether the running thread could block now: another thread is Ready to run
+    /// in its place. A call that would block checks this first, so that it can be
+    /// refused before it changes any state.
+    #[must_use]
+    pub fn can_block(&self) -> bool {
+        self.pick_next(self.current).is_some()
+    }
+
     /// Blocks the running thread and gives up the processor. Returns when the
     /// thread is woken and scheduled again.
     ///
@@ -178,15 +200,21 @@ impl Scheduler {
     ///
     /// Same contract as [`Scheduler::yield_now`].
     #[cfg(target_arch = "x86_64")]
-    pub unsafe fn block_current(&mut self) -> bool {
-        let cur = self.current;
-        self.threads[cur].state = State::Blocked;
-        if self.pick_next(cur).is_none() {
-            self.threads[cur].state = State::Ready;
-            return false;
+    pub unsafe fn block_current(table: *mut Self) -> bool {
+        {
+            // SAFETY: as for `yield_now`. This reference ends before the switch.
+            let s = unsafe { &mut *table };
+            let cur = s.current;
+            s.threads[cur].state = State::Blocked;
+            if s.pick_next(cur).is_none() {
+                s.threads[cur].state = State::Ready;
+                return false;
+            }
         }
-        // SAFETY: the same contract as `yield_now`, which the caller upholds.
-        unsafe { self.yield_now() };
+        // SAFETY: the caller upholds the `yield_now` contract. Another Ready thread
+        // exists, so `yield_now` switches away and does not return early. The
+        // running thread is marked Blocked, so it is not picked.
+        unsafe { Self::yield_now(table) };
         true
     }
 
@@ -198,12 +226,18 @@ impl Scheduler {
     /// Same contract as [`Scheduler::yield_now`]. The caller must not depend on
     /// anything after this call.
     #[cfg(target_arch = "x86_64")]
-    pub unsafe fn exit_current(&mut self) {
-        let cur = self.current;
-        self.threads[cur].state = State::Done;
-        // SAFETY: as for `yield_now`. If no other thread is ready, the call
-        // returns at once and the caller must stop the processor itself.
-        unsafe { self.yield_now() };
+    pub unsafe fn exit_current(table: *mut Self) {
+        {
+            // SAFETY: as for `yield_now`. This reference ends before the switch.
+            let s = unsafe { &mut *table };
+            let cur = s.current;
+            s.threads[cur].state = State::Done;
+        }
+        // SAFETY: the caller upholds the `yield_now` contract. The thread is marked
+        // Done, so it is never picked again. If no other thread is Ready,
+        // `yield_now` returns at once and this thread keeps running. The caller
+        // must then stop the processor itself.
+        unsafe { Self::yield_now(table) };
     }
 }
 
