@@ -34,6 +34,11 @@ pub mod pixel_format {
 /// The UEFI memory type of conventional (free) memory.
 const EFI_CONVENTIONAL_MEMORY: u32 = 7;
 
+/// The first megabyte holds the real-mode vectors, the BIOS data area and firmware
+/// data. Firmware may list it as conventional memory, so frames below this address
+/// are never freed into the allocator, and never handed out.
+pub const LOW_MEMORY_END: u64 = 0x10_0000;
+
 /// Smallest possible UEFI memory descriptor.
 const MIN_DESCRIPTOR_SIZE: u64 = 40;
 
@@ -76,13 +81,16 @@ const _: () = assert!(core::mem::size_of::<BootInfo>() == 80);
 ///
 /// # Safety
 ///
-/// `address` must be readable for 40 bytes. It is either zero (no record), or
-/// the address of a record the loader wrote.
+/// `address` must be zero (no record), or readable for `size_of::<BootInfo>()`
+/// (80) bytes and hold a record the loader wrote. Every field is an integer, so
+/// any bit pattern is a valid `BootInfo`, and the magic and version are checked
+/// after the read.
 pub unsafe fn read(address: u64) -> Option<BootInfo> {
     if address == 0 {
         return None;
     }
-    // SAFETY: the caller guarantees 40 readable bytes at `address`.
+    // SAFETY: `address` is non-zero, so the caller's contract gives 80 readable
+    // bytes there. `read_unaligned` makes no alignment demand on the record.
     let info = unsafe { ptr::read_unaligned(address as *const BootInfo) };
     (info.magic == MAGIC && info.version == VERSION).then_some(info)
 }
@@ -139,7 +147,11 @@ pub unsafe fn allocator_from_map<'a>(
     unsafe {
         for_each_conventional(info, |start, pages| {
             for page in 0..pages {
-                if let Some(frame) = Frame::from_address(start + page * FRAME_SIZE) {
+                let address = start + page * FRAME_SIZE;
+                if address < LOW_MEMORY_END {
+                    continue;
+                }
+                if let Some(frame) = Frame::from_address(address) {
                     // Frames past the managed range are refused, and ignored.
                     let _ = allocator.free(frame);
                 }
@@ -220,26 +232,32 @@ mod tests {
     }
 
     #[test]
-    fn only_conventional_regions_are_freed() {
-        // Frames 0..8 are 4 KiB each. Conventional: frame 1, and frames 3 and 4.
-        // Loader data (type 2) at frame 2 and boot services (type 4) at frame 5.
-        let mut map = [0u8; 4 * 40];
+    fn only_conventional_regions_above_the_low_megabyte_are_freed() {
+        // Frames from the 1 MiB line: conventional at 0x101000, loader data
+        // (type 2) at 0x102000, conventional at 0x103000 (two pages), boot
+        // services (type 4) at 0x105000. A conventional frame below 1 MiB, at
+        // 0x1000, is firmware's and must stay in use.
+        let mut map = [0u8; 5 * 40];
         descriptor(&mut map, 0, 7, 0x1000, 1);
-        descriptor(&mut map, 1, 2, 0x2000, 1);
-        descriptor(&mut map, 2, 7, 0x3000, 2);
-        descriptor(&mut map, 3, 4, 0x5000, 1);
+        descriptor(&mut map, 1, 7, 0x10_1000, 1);
+        descriptor(&mut map, 2, 2, 0x10_2000, 1);
+        descriptor(&mut map, 3, 7, 0x10_3000, 2);
+        descriptor(&mut map, 4, 4, 0x10_5000, 1);
         let info = info_for(&map);
-        let mut bits = [0u64; 1];
-        // SAFETY: the map array is readable for its length.
-        let mut allocator = unsafe { allocator_from_map(&info, 8, &mut bits) }.unwrap();
+        let frames = 0x106;
+        let mut bits = [0u64; 5]; // 262 frames need five words
+                                  // SAFETY: the map array is readable for its length.
+        let mut allocator = unsafe { allocator_from_map(&info, frames, &mut bits) }.unwrap();
         assert_eq!(allocator.free_frames(), 3);
-        assert!(!allocator.is_allocated(Frame::from_address(0x1000).unwrap()));
-        assert!(allocator.is_allocated(Frame::from_address(0x2000).unwrap()));
-        assert!(!allocator.is_allocated(Frame::from_address(0x4000).unwrap()));
-        assert!(allocator.is_allocated(Frame::from_address(0x5000).unwrap()));
+        assert!(allocator.is_allocated(Frame::from_address(0x1000).unwrap()));
+        assert!(!allocator.is_allocated(Frame::from_address(0x10_1000).unwrap()));
+        assert!(allocator.is_allocated(Frame::from_address(0x10_2000).unwrap()));
+        assert!(!allocator.is_allocated(Frame::from_address(0x10_3000).unwrap()));
+        assert!(!allocator.is_allocated(Frame::from_address(0x10_4000).unwrap()));
+        assert!(allocator.is_allocated(Frame::from_address(0x10_5000).unwrap()));
         assert!(allocator.is_allocated(Frame::from_address(0x0).unwrap()));
         let frame = allocator.allocate().unwrap();
-        assert!([0x1000, 0x3000, 0x4000].contains(&frame.start()));
+        assert!([0x10_1000, 0x10_3000, 0x10_4000].contains(&frame.start()));
     }
 
     #[test]
