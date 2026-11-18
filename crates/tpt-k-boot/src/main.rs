@@ -74,8 +74,10 @@ struct Framebuffer {
 ///
 /// `bs` must be live boot services.
 unsafe fn find_framebuffer(bs: *mut BootServices) -> Option<Framebuffer> {
-    // SAFETY: the caller guarantees live boot services. The protocol pointers
-    // come from firmware and stay valid while their handles do.
+    // SAFETY: the caller guarantees live boot services. `handles` holds 8
+    // entries and `locate_handles` reports at most that many, so `count` indexes
+    // in bounds. Each protocol pointer comes from firmware and stays valid while
+    // its handle does. The mode and info pointers are null-checked before use.
     unsafe {
         let mut handles = [ptr::null_mut(); 8];
         let count = locate_handles(bs, &GRAPHICS_OUTPUT_GUID, &mut handles).ok()?;
@@ -194,7 +196,11 @@ pub unsafe extern "efiapi" fn efi_main(image: Handle, system_table: *mut SystemT
                 "tpt-k boot: {} (status {:#x})",
                 failure.what, failure.status
             );
-            // SAFETY: boot services have not been exited on this path.
+            // SAFETY: `boot_services` came from the live system table. Every
+            // `Err` from `load_and_jump` is returned before `ExitBootServices`
+            // succeeds, except the `usize::try_from(entry)` check, which cannot
+            // fail on x86_64 where `usize` is 64 bits. So boot services are still
+            // active here.
             unsafe { stall(boot_services, 5_000_000) };
             EFI_LOAD_ERROR
         }
@@ -209,8 +215,10 @@ pub unsafe extern "efiapi" fn efi_main(image: Handle, system_table: *mut SystemT
 /// `bs` must be live boot services. `device` must be a handle from firmware.
 unsafe fn open_kernel(bs: *mut BootServices, device: Handle) -> Result<*mut File, Status> {
     // SAFETY: the caller guarantees live boot services. Each protocol pointer
-    // comes from firmware and stays valid while its handle does, and the
-    // root directory is closed before this returns.
+    // comes from firmware and stays valid while its handle does. `root` is
+    // written by `open_volume` and is non-null on success, and it is closed
+    // before this returns. `path` comes from `encode_path`, so it is
+    // NUL-terminated and lives across the `open` call.
     unsafe {
         let fs: *mut SimpleFileSystem = handle_protocol(bs, device, &SIMPLE_FILE_SYSTEM_GUID)?;
         let mut root: *mut File = ptr::null_mut();
@@ -298,8 +306,11 @@ unsafe fn load_and_jump(
             return Err(Failure::new("kernel file read was short", 0));
         }
         let _ = ((*file).close)(file);
-        // SAFETY: `buffer` holds `file_len` bytes that were just read, in pages
-        // this loader owns and does not free.
+        // SAFETY: `read == file_len` was checked above, so `buffer` holds
+        // `file_len` bytes just read. `pages_for(file_size)` pages were allocated
+        // at `buffer`, which covers `file_len`. The pages are loader-owned, not
+        // freed, and firmware identity-maps them until `ExitBootServices`, so the
+        // physical address is usable as a pointer.
         let image_bytes = slice::from_raw_parts(buffer as *const u8, file_len);
 
         // Place the segments. Compute the span first, so one AllocateAddress
@@ -310,7 +321,11 @@ unsafe fn load_and_jump(
         for segment in elf.load_segments() {
             let segment = segment.map_err(|e| Failure::new(elf_message(e), 0))?;
             low = low.min(segment.paddr);
-            high = high.max(segment.paddr + segment.mem_size);
+            let end = segment
+                .paddr
+                .checked_add(segment.mem_size)
+                .ok_or_else(|| Failure::new("kernel segment address wraps", 0))?;
+            high = high.max(end);
         }
         if high == 0 {
             return Err(Failure::new("kernel image has no loadable segment", 0));
@@ -321,16 +336,21 @@ unsafe fn load_and_jump(
             .map_err(|status| Failure::new("kernel load address is not free", status))?;
         for segment in elf.load_segments() {
             let segment = segment.map_err(|e| Failure::new(elf_message(e), 0))?;
-            // SAFETY: the source range is inside `image_bytes`, checked by
-            // `Elf::parse` and `load_segments`. The destination was allocated
-            // above and covers `paddr..paddr + mem_size`. The two buffers are
-            // distinct allocations, so the copy does not overlap.
+            // SAFETY: the source `file_offset..file_offset + file_size` is inside
+            // `image_bytes`, checked by `read_segment`. The destination
+            // `paddr..paddr + file_size` lies in the span allocated above, since
+            // `base <= paddr` and `high >= paddr + mem_size`. The sum was
+            // computed with `checked_add` above, so it does not wrap. The buffers
+            // are distinct allocations, so the copy does not overlap.
             ptr::copy_nonoverlapping(
                 image_bytes.as_ptr().add(segment.file_offset as usize),
                 segment.paddr as *mut u8,
                 segment.file_size as usize,
             );
-            // SAFETY: the zeroed range lies inside the allocation (see above).
+            // SAFETY: `paddr + file_size..paddr + mem_size` is the BSS tail, and
+            // `read_segment` guarantees `file_size <= mem_size`, so the length does
+            // not underflow. The range lies in the same allocation as the copy
+            // above, under the same no-wrap condition.
             ptr::write_bytes(
                 (segment.paddr + segment.file_size) as *mut u8,
                 0,
@@ -364,6 +384,9 @@ unsafe fn load_and_jump(
         let map_pages = pages_for(map_bytes as u64);
         let map_addr = allocate_pages(bs, ALLOCATE_ANY_PAGES, LOADER_DATA, map_pages, 0)
             .map_err(|status| Failure::new("no memory for the memory map", status))?;
+        // SAFETY: `map_addr` is a fresh allocation of `map_pages` pages, so it
+        // covers `map_pages * PAGE_SIZE` bytes and no other reference to it
+        // exists. Firmware writes into it only during `GetMemoryMap`.
         let map = slice::from_raw_parts_mut(map_addr as *mut u8, map_pages * PAGE_SIZE as usize);
 
         let mut last_status = EFI_SUCCESS;
@@ -380,7 +403,10 @@ unsafe fn load_and_jump(
         check(last_status, "cannot leave boot services")?;
         let map_info = map_info.ok_or(Failure::new("no memory map", 0))?;
 
-        // Fill in the record. Writing to our own page allocates nothing.
+        // SAFETY: `info_addr` is a page-aligned, loader-owned page of at least
+        // `size_of::<BootInfo>()` bytes (80), allocated before the map was read.
+        // `write` does not read the old contents, and nothing else references the
+        // page.
         (info_addr as *mut BootInfo).write(BootInfo {
             magic: BOOT_INFO_MAGIC,
             version: BOOT_INFO_VERSION,
@@ -401,6 +427,11 @@ unsafe fn load_and_jump(
         // takes its handoff argument in rdi, and the SysV ABI is what the
         // kernel's `_start` expects.
         let entry_addr = usize::try_from(entry).map_err(|_| Failure::new("entry address", 0))?;
+        // SAFETY: `entry_addr` is the ELF entry, which `Elf::parse` checked lies
+        // inside a `PT_LOAD` segment. That segment was just copied to this
+        // physical address, and it is identity-mapped and executable. The target
+        // is `extern "sysv64" fn(u64) -> !`, which matches `_start`'s ABI, and
+        // `usize` and fn pointers have the same size on x86_64.
         let kernel: extern "sysv64" fn(u64) -> ! = core::mem::transmute(entry_addr);
         kernel(info_addr)
     }

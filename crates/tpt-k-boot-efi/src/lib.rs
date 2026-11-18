@@ -161,7 +161,9 @@ pub unsafe fn find_configuration_table(
     system_table: *const SystemTable,
     guid: &Guid,
 ) -> Option<*mut c_void> {
-    // SAFETY: the caller guarantees the table and its entries are live.
+    // SAFETY: the caller guarantees `system_table` is live, so reading its
+    // fields is valid. `entries` is null-checked before use, and the iterator
+    // only indexes `0..count`, the number of entries firmware reports.
     unsafe {
         let count = (*system_table).number_of_table_entries;
         let entries = (*system_table).configuration_table as *const ConfigurationTable;
@@ -468,8 +470,10 @@ pub unsafe fn locate_handles(
     out: &mut [Handle],
 ) -> Result<usize, Status> {
     let mut size = core::mem::size_of_val(out);
-    // SAFETY: the caller guarantees `bs` is live. `out` is valid for `size`
-    // bytes of writes, and `guid` and `size` are valid for the call.
+    // SAFETY: the caller guarantees `bs` is live. `out` is a live slice of
+    // `size_of_val(out)` bytes, which is the `BufferSize` firmware is given, so
+    // firmware cannot write past it. `guid` and `&mut size` are locals that
+    // outlive the call. The count is only derived on success.
     let status = unsafe {
         ((*bs).locate_handle)(BY_PROTOCOL, guid, ptr::null(), &mut size, out.as_mut_ptr())
     };
@@ -495,7 +499,9 @@ pub unsafe fn allocate_pages(
     address: u64,
 ) -> Result<u64, Status> {
     let mut out = address;
-    // SAFETY: the caller guarantees `bs` is live. `out` is valid for writes.
+    // SAFETY: the caller guarantees `bs` is live. `out` is a local that lives
+    // across the call, so the pointer written by firmware is valid. The value
+    // is only read back on success.
     let status = unsafe { ((*bs).allocate_pages)(kind, memory_type, pages, &mut out) };
     if status == EFI_SUCCESS {
         Ok(out)
@@ -530,8 +536,11 @@ pub unsafe fn get_memory_map(bs: *mut BootServices, buf: &mut [u8]) -> (Status, 
     let mut key = 0usize;
     let mut descriptor_size = 0usize;
     let mut version = 0u32;
-    // SAFETY: the caller guarantees `bs` is live. `buf` is valid for `size`
-    // bytes, and the out pointers are valid for writes.
+    // SAFETY: the caller guarantees `bs` is live. `buf` is a live slice whose
+    // length is passed as `size`, so firmware writes at most `buf.len()` bytes.
+    // An empty slice gives a dangling but aligned pointer that firmware does not
+    // write through, because it reports the required size instead. `key`,
+    // `descriptor_size` and `version` are locals that outlive the call.
     let status = unsafe {
         ((*bs).get_memory_map)(
             &mut size,
