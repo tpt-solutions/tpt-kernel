@@ -223,6 +223,19 @@ fn evaluate_claim(claim: &Claim, root: &Path) -> Outcome {
                 {
                     problems.push(format!("`fn {}(` not found in `{}`", ev.name, ev.path));
                 }
+                // A proof item names a property in its script. The verdict is the
+                // solver's, recorded in `<script>.log` as `<property>: unsat`. The
+                // gate reads that record and does not run the solver.
+                if ev.kind == "proof" {
+                    let log = std::fs::read_to_string(root.join(format!("{}.log", ev.path)))
+                        .unwrap_or_default();
+                    if !log.lines().any(|line| line == format!("{}: unsat", ev.name)) {
+                        problems.push(format!(
+                            "no `{}: unsat` line in `{}.log`",
+                            ev.name, ev.path
+                        ));
+                    }
+                }
             }
         }
     }
@@ -632,6 +645,27 @@ mod tests {
             &root,
         );
         assert!(!r.passed());
+    }
+
+    #[test]
+    fn proof_without_a_recorded_unsat_fails_the_gate() {
+        let root = scratch("proof-missing", "fn check_all() {}
+");
+        let c = claim("P", true, &[("proof", "rights")], None);
+        let r = evaluate_linked(&[c], &root);
+        assert!(!r.passed());
+        assert!(r.problems()[0].contains("rights: unsat"));
+    }
+
+    #[test]
+    fn proof_with_a_recorded_unsat_passes_the_gate() {
+        let root = scratch("proof-recorded", "fn check_all() {}
+");
+        std::fs::write(root.join("lib.rs.log"), "rights: unsat
+").unwrap();
+        let c = claim("P", true, &[("proof", "rights")], None);
+        let r = evaluate_linked(&[c], &root);
+        assert!(r.passed(), "{:?}", r.problems());
     }
 
     #[test]
