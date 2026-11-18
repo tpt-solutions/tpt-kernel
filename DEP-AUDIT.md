@@ -38,8 +38,43 @@ Decided 2026-11-18, following the recommendations:
   allowlist entry would also allow it everywhere, so the exception stays scoped
   in `LICENSE-POLICY.md`.
 
-The sibling repos' Apache-only dependencies are not decided here: each needs a
-replacement or a written exception, and that work is in those repos.
+## Status 2026-11-18, after the gate fixes
+
+Apache-2.0 alone is allowed only in dev-dependencies (LICENSE-POLICY.md). The
+gate now honours that, and two gate bugs that gave false violations are fixed in
+`tpt-cargo-vitals` (commits `088deb6` and `b718a87` on its master):
+
+- `--dev-allow Apache-2.0` judges a dependency no build ships against the
+  policy plus Apache-2.0. A shipped dependency never gets that allowance.
+- A dependency that no enabled feature turns on is listed by `cargo metadata`,
+  but never compiled. It is now skipped, not checked.
+- `Apache-2.0 WITH LLVM-exception` is judged as one license, so the policy can
+  allow it exactly.
+- `--exception CRATE=LICENSE` lets one crate use one license, for the recorded
+  `webpki-roots` exception.
+
+Results, with the policy allowlist, `--dev-allow Apache-2.0`, and the
+`webpki-roots` exception for `tpt-mcpbox` only:
+
+| Repo | License gate | Advisories | Note |
+|---|---|---|---|
+| tpt-primitives | pass | 0 | |
+| tpt-simd | pass | 0 | |
+| tpt-concord | pass | 0 | |
+| tpt-crypto | pass | 0 | |
+| tpt-fabric | pass | 0 | |
+| tpt-filesystem | pass | 0 | |
+| tpt-crypto-rustls | pass | 7 | `rustls-rustcrypto` 0.0.2-alpha; no acceptance recorded in this repo |
+| tpt-mcpbox | **fail**: `witx` 0.9.1 (`Apache-2.0`, normal) | 7 | the same 7 advisories, accepted in its `deny.toml` until 2027-02-09 |
+
+`witx` is a normal dependency: `wasmtime-wasi` → `wiggle` → `wiggle-generate`
+→ `wiggle-macro` (a proc macro, so it runs at build time and is not linked into
+the binary). The dev-only allowance does not cover it, so it needs a decision: a
+dated exception, or a replacement. Upgrading wasmtime was not checked here.
+
+The CI gate in each repo still runs the old `tpt-cargo-vitals` flags, because
+CI installs vitals from GitHub. The new flags go into CI only after the vitals
+commits are pushed. Pushing is a separate step that has not been done.
 
 ## Tool limitation
 

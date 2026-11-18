@@ -64,17 +64,29 @@ any code that is linked into the kernel or trusted computing base:
   dependencies must still be audited (see the todo checklist).
 - A license violation fails the build. It is not a warning.
 
+## Dev-only dependencies
+
+A dependency that no build ships (one reached only through dev-dependencies)
+may use `Apache-2.0` alone, as well as the allowlist above. The gate checks it
+with `tpt-cargo-vitals check --dev-allow Apache-2.0`. Nothing else is relaxed
+for dev-only code, and a shipped dependency never gets the allowance.
+
+Optional dependencies that no enabled feature turns on are not compiled, so the
+gate does not check them.
+
 ## Exceptions
 
 No exceptions are granted by default. A proposed exception requires a written
 justification in the pull request, and a maintainer must approve it. An approved
-exception is recorded in this file with its date and reason.
+exception is recorded in this file with its date and reason. The gate applies
+it to the named crate only, with `--exception CRATE=LICENSE`.
 
 Approved exceptions:
 
 - **`webpki-roots` 1.x, `CDLA-Permissive-2.0`** (approved 2026-11-09, `tpt-mcpbox`).
   This is a data license covering the bundled Mozilla CA root store, not code. It
-  is used for TLS trust roots. Scope: this crate only.
+  is used for TLS trust roots. Scope: this crate only, enforced with
+  `--exception webpki-roots=CDLA-Permissive-2.0`.
 
 ## Open items
 

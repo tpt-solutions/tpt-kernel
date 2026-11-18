@@ -21,6 +21,7 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 - Workspace version `0.1.0`, set once in `[workspace.package]` and inherited by all 34 crates (decided 2026-11-18, see `docs/release.md`).
 - The license gate (`xtask check`, the CI license job) allows `MIT-0` and `BSL-1.0`, as `LICENSE-POLICY.md` already did. `CDLA-Permissive-2.0` is not in the gate: it stays a scoped exception for `webpki-roots` only.
 - `semadiff` is installed from `tpt-semadiff`, so the review workflow in `docs/developer-guide.md` runs on this machine.
+- `tpt-cargo-vitals` license gate: dev-only dependencies may use `Apache-2.0` alone (`--dev-allow`), optional dependencies no feature enables are not checked, `WITH` licenses are judged whole, and a recorded exception applies to one crate (`--exception`). Its master has these as `088deb6` and `b718a87`. Seven of eight sibling repos pass; see `DEP-AUDIT.md`.
 - CI: `.github/workflows/image.yml` builds the boot image and the dashboard on push to master. `.devcontainer/` gives the pinned toolchain, both targets, QEMU and OVMF.
 
 - `tpt-k-build doctor`: checks the Rust toolchain and targets, QEMU, OVMF, the sibling repos and the git hooks path. It prints the fix for each problem, for Windows and Linux.
