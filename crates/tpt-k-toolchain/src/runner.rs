@@ -278,6 +278,10 @@ pub fn qemu_args(run: &QemuRun) -> Vec<String> {
         "-m".into(),
         "256M".into(),
         "-no-reboot".into(),
+        // The kernel talks only over serial. Without this QEMU opens a GTK
+        // window, which fails on a headless host such as a CI runner.
+        "-display".into(),
+        "none".into(),
         "-serial".into(),
         serial,
         "-drive".into(),
@@ -449,6 +453,7 @@ mod tests {
             icount: false,
         };
         let args = qemu_args(&run);
+        assert!(args.windows(2).any(|w| w == ["-display", "none"]));
         assert!(args.windows(2).any(|w| w == ["-serial", "stdio"]));
         assert!(args.contains(&"isa-debug-exit,iobase=0xf4,iosize=0x04".to_string()));
         assert!(args.contains(&"file=fat:rw:esp,format=raw,media=disk".to_string()));
