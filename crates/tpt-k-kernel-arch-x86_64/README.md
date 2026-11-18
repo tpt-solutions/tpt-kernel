@@ -15,7 +15,7 @@ Phase 2, implemented. The modules are:
 - `interrupts.rs`: nestable interrupt-state critical sections.
 - `apic.rs`, `ioapic.rs`: the local APIC timer and the IO-APIC routing.
 - `rtc.rs`: the CMOS real-time clock's periodic interrupt, used to test the IO-APIC route.
-- `paging.rs`: 4-level paging, with a 2 MiB identity map and 4 KiB remapping.
+- `paging.rs`: 4-level paging, with a 2 MiB identity map, and 4 KiB mapping and unmapping.
 - `syscall.rs`: `SYSCALL`/`SYSRET` entry and transfer to user mode.
 
 Every `unsafe` block states the invariant it relies on.

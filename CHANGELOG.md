@@ -11,6 +11,8 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 
 ### Added
 
+- `SYS_UNMAP` (number 17) removes a mapping made by `SYS_MAP`. Each memory object records up to 4 mappings, and `SYS_MEM_FREE` refuses while any is recorded (boot self-test `mem: unmapped object was freed`).
+- Every `unsafe` block outside `tpt-k-kernel/src/main.rs` (98 sites, still open) now states its invariants. `replay/golden.txt` is regenerated for the new self-test.
 - Capability revocation at exit, seL4-style. An exiting thread deletes its handles without revoking the copies other threads hold, and the derivation tree is re-linked (`cap::delete_across`). Memory objects that nothing refers to are then reclaimed, which returns their frames. Revoking the last handle to an object reclaims it too.
 - Capability inspector: the kernel prints the live capability graph at boot (`caps: begin` … `caps: end`), and `tpt-k-build caps` renders it as text or DOT.
 - Policy as a manifest: `tpt-k-root-manifest` compiles a TOML manifest into grants, refusing any grant above an object's ceiling. `tpt-k-build lint-manifest` lints it.
@@ -65,6 +67,13 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
   an empty stub. It is added back when it has code.
 - Module docs in `tpt-k-boot` and its README describe the 80-byte handoff record
   in `rdi`, not a zero argument.
+
+### Fixed
+
+- A spawn refused after its child thread existed halted the kernel; the grant is now checked first.
+- Spawned children inherited the boot space's window mappings with no record; they now fork from a template taken before any object is mapped.
+- The syscall entry did not clear DF; `FMASK` now clears it with IF.
+- The loader's kernel segment end (`paddr + mem_size`) could wrap; it is now `checked_add`.
 
 ### Not yet
 

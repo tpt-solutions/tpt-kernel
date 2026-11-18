@@ -62,7 +62,7 @@ layer is in [docs/todos/](docs/todos/).
 | UEFI loader and kernel boot in QEMU | Working; checked by the QEMU smoke test |
 | Memory, page tables, address spaces | Working in the kernel; boot memory map used |
 | Scheduling | Timer-driven round-robin; priority queue host-tested, not yet wired in |
-| IPC and capabilities | Working in the kernel: endpoints, grant, revoke, memory objects |
+| IPC and capabilities | Working in the kernel: endpoints, grant, revoke, memory objects (map, unmap, free) |
 | Drivers and root server | Not running yet; the parts are host-tested libraries |
 | Shell | Host-tested REPL; external programs are not started yet |
 | Parsers (ACPI, PCI, FDT, USB, FAT32, ELF, GPT, network) | Host-tested, with mutation tests |

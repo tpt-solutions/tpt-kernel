@@ -9,6 +9,8 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- `SYS_UNMAP` (number 17): removes the mapping of a memory object at a given address. Objects record up to 4 mappings, and `SYS_MEM_FREE` returns `EBUSY` until all are removed. A boot self-test checks it.
+- `SYS_MAP` refuses a second mapping of the same object at the same address, and undoes a partly mapped object on failure.
 - The live capability graph is printed at boot, between `caps: begin` and `caps: end`, one `cap:` line per capability.
 - Exiting threads and faulting ring-3 threads delete their handles without revoking (`delete_across`), and memory objects that nothing refers to are reclaimed.
 - Interrupts stay off while the bootstrap thread sets up the demo, and are enabled only when the demo threads start.
@@ -20,3 +22,8 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 - Early boot entry: disables interrupts, switches to a kernel stack, and calls `kmain`.
 - Phase 2 demo: preemptive workers, a kernel server, ring-3 threads over capability handles, and two isolated user address spaces.
 - Panic handler and linker script for the x86_64 kernel image.
+
+### Fixed
+
+- A refused spawn no longer halts the kernel: the grant is checked before the child thread is created.
+- Spawned children fork from a template space taken before any object is mapped, so they inherit no unrecorded mappings.

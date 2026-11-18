@@ -9,6 +9,7 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
+- The `unsafe` blocks in `block_current` and `exit_current` state why the switch is sound, and a broken doc link is fixed.
 - Cooperative round-robin scheduler over a fixed-size thread table.
 - x86_64 context switch that saves only the stack pointer in the thread record.
 - Preemptive priority scheduling core in `priority`: 32 levels, round-robin within a level, tick-based time slices, and block/unblock. Not yet wired to the context switch; no priority inheritance.
