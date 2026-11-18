@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: Configuration-space enumeration over a caller-supplied `ConfigAccess`, and BAR decoding and sizing (32-bit and 64-bit memory, I/O). Decoding is switched off while BARs are sized. `enumerate_tree` follows PCI-to-PCI bridges with a depth cap and a visited bitmap, and the caller supplies the ECAM access. Deterministic mutation tests cover BAR decoding and sizing, enumeration and BAR probing.
+Implemented and host-tested: configuration-space enumeration over a caller-supplied `ConfigAccess`, and BAR decoding and sizing (32-bit and 64-bit memory, and I/O). `enumerate` does not follow bridges; `enumerate_tree` follows PCI-to-PCI bridges with a depth cap and a visited bitmap. Decoding is switched off while BARs are sized. The caller supplies the ECAM access. Deterministic mutation tests cover BAR decoding and sizing, enumeration and BAR probing.
 
 ## License
 

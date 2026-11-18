@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-The shell REPL is built: it parses lines with `tpt-k-userland-shell`, runs the builtins `jobs`, `fg`, `bg`, `exit`, `true`, `false` and `echo`, and reads a script from standard input. Any other command goes to a `Spawner`. The binary uses `NoSpawner`, which reports it as not supported yet with status 127. The prompt is written only on a terminal. Pipelines and redirections are refused with an error. Starting programs needs the process layer, which is not built.
+The shell REPL is built: it parses lines with `tpt-k-userland-shell`, runs the builtins `jobs`, `fg`, `bg`, `exit`, `true`, `false` and `echo`, and reads a script from standard input. Any other command goes to a `Spawner` trait object. The binary uses `NoSpawner`, which reports it as not supported yet with status 127. The prompt is written only on a terminal. Pipelines and redirections parse but are refused with an error, and `&` records a job that is never run. Starting programs needs the process layer, which is not built.
 
 ## License
 

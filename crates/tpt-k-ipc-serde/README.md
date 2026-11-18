@@ -6,7 +6,9 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: Framed messages: a 16-byte header, 64-bit words and a payload, checked with CRC-32C. Words are read in place without copying. The checksum is scalar; the `tpt-simd` path is not used yet. Deterministic mutation tests cover the frame decoder, including repaired checksums Deterministic property-style tests cover round trips, bit flips and arbitrary input.
+Implemented and host-tested: framed messages with a 16-byte header, 64-bit words and a payload, checked with CRC-32C. Words are read in place without copying. Deterministic mutation tests cover the frame decoder, including repaired checksums, and deterministic property-style tests cover round trips, bit flips and arbitrary input.
+
+Not done: the checksum is a scalar, table-driven CRC-32C; there is no SIMD path yet.
 
 ## License
 

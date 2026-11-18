@@ -6,7 +6,9 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: RSDP and table-list parsing, the MADT (local APICs, I/O APICs, interrupt overrides, x2APIC) and the MCFG ECAM windows. Every table is checked for its signature, length and checksum. DSDT and SSDT AML is walked for device discovery only (`_HID`, `_ADR`). Control methods are skipped, not evaluated, and unknown terms are refused. Deterministic mutation tests cover the RSDP, system table, MADT and MCFG parsers.
+Implemented and host-tested: RSDP and table-list parsing, the MADT (local APICs, I/O APICs, interrupt overrides, NMIs, x2APIC) and the MCFG ECAM windows. Tables are checked for length and checksum; the MADT and MCFG parsers also check their signature. DSDT and SSDT AML is walked for device discovery only (`_HID`, `_ADR`). Control methods are skipped, not evaluated, and terms the walker cannot skip are refused.
+
+Not done: AML is not interpreted (no method evaluation, operation regions or fields). Deterministic mutation tests cover the RSDP, system table, MADT and MCFG parsers, not the AML walker.
 
 ## License
 

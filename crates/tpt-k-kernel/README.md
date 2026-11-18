@@ -1,19 +1,23 @@
 # tpt-k-kernel
 
-The tpt-k microkernel binary. It covers early boot entry, paging, the syscall boundary, address spaces, and the panic handler. It also runs the Phase 2 demo.
+The tpt-k microkernel binary. It covers early boot entry, paging, the syscall boundary, address spaces, and the panic handler. It also runs the boot self-tests and a demo.
 
 Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem by TPT Solutions.
 
 ## Status
 
-Phase 2, implemented. The demo runs these threads under the scheduler:
+The kernel is loaded by the tpt-k UEFI loader and runs on x86_64. At boot it runs a set of self-tests, and a failed test stops the VM with a message. It then runs a demo of these threads under the scheduler:
 
-- Two workers that print tagged letters and spin between prints, so the PIT tick preempts them.
+- Two workers that print tagged letters and spin between prints, so the APIC timer tick preempts them.
 - A kernel server that receives one request and replies.
 - A ring-3 user thread. It writes a message, checks that a receive-only handle is refused, sends a request and receives the reply through capability handles, then exits with the reply's first word.
 - Two ring-3 processes, each in its own address space, that check isolation by reading back their own value from a shared virtual address.
+- A ring-3 root program that spawns children from a template space and from a program image, sends a message and a bulk payload, and waits for an image child's exit code.
+- A driver thread that waits for the CMOS RTC interrupt through an interrupt capability, and a fault thread that reads address 0 and is ended by the fault handler.
 
 The kernel is single-core. Kernel state is touched only inside `interrupts::without` sections or during a syscall, which runs with interrupts off.
+
+The `replay` feature fixes the APIC timer count, so the boot transcript is the same on every run under an instruction counter. `replay/golden.txt` at the repository root holds a recorded transcript.
 
 ## Build
 
@@ -28,4 +32,3 @@ The equivalent workspace build target is `x86_64-unknown-none`.
 ## License
 
 Dual-licensed under [MIT](../../LICENSE-MIT) OR [Apache-2.0](../../LICENSE-APACHE). See [LICENSE-POLICY.md](../../LICENSE-POLICY.md) for dependency rules and [CONTRIBUTING.md](../../CONTRIBUTING.md) for how to contribute.
-

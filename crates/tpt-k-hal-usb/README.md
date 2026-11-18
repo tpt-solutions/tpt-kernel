@@ -6,7 +6,9 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: Device, configuration, interface and endpoint descriptor parser, with HID boot keyboard and mouse recognition. Descriptors it does not know are returned unparsed for the class driver. Deterministic mutation tests cover the configuration and descriptor parsers.
+Implemented and host-tested: device, configuration, interface and endpoint descriptor parsing, with HID boot keyboard and mouse recognition. Descriptors it does not know are returned unparsed for the class driver. Deterministic mutation tests cover the configuration and descriptor parsers.
+
+Not done: the crate does not talk to a host controller or issue transfers; the caller supplies the descriptor bytes.
 
 ## License
 

@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: Core hardware resources: MMIO regions, I/O port ranges and interrupt lines, with the collision rule the root server checks before it grants them.
+Implemented and host-tested: the resource types (`MmioRegion`, port ranges and `IrqLine`, combined as `Resource`) and the collision rule in `Resource::conflicts_with`. The crate holds the types and the rules only; the root server's grant logic is not here.
 
 ## License
 

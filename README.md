@@ -24,7 +24,7 @@ scripts/fetch-deps.sh
 # 3. Check the machine; prints the fix for anything missing (run from the repo root)
 cargo run -q -p tpt-k-toolchain --bin tpt-k-build -- doctor
 
-# 4. Local gate: fmt, clippy (warnings denied), host tests, assurance gate
+# 4. Local gate: fmt, clippy (warnings denied), host tests, assurance gate, license gate
 scripts/check.sh
 
 # 5. Boot the kernel in QEMU and check the serial output (needs QEMU and OVMF)
@@ -50,7 +50,7 @@ and belongs to one layer.
 | `ipc` | Client and server framework, capability tokens, serialisation | user space |
 | `drivers` | Restart policy, NVMe, VirtIO and USB HID encodings | user space |
 | `userland` | Shell, libc core, network codecs, filesystem bridge | user space |
-| `toolchain` | `tpt-k-build`: plans cargo commands and checks the assurance graph | host |
+| `toolchain` | `tpt-k-build`: plans cargo commands, checks the toolchain, boots the image in QEMU, and runs the assurance gate | host |
 
 Per-layer notes are in [docs/layers/](docs/layers/), and the checklist for each
 layer is in [docs/todos/](docs/todos/).

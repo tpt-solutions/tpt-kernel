@@ -6,9 +6,9 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: Client/server framework: seven-word requests that carry a capability token, and one-word status replies. `serve` verifies the token and the rights before the service runs. There is no transport yet.
+Implemented and host-tested: a request framework in which seven-word requests carry a capability token and `serve` checks the frame, the token, the opcode and the rights before the service runs. Every refusal still gets a reply. The `block` module defines the block-device protocol (read, write, flush, get-info), and `serve_block` checks requests against the device's sector count before the device runs.
 
-The `block` module defines the block-device protocol (read, write, flush, get-info) used by drivers and userland. Requests are checked against the device's sector count before the device runs.
+Not done: there is no transport yet.
 
 ## License
 

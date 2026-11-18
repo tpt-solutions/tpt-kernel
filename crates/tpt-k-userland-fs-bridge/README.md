@@ -6,7 +6,7 @@ Part of tpt-k, a permissively licensed, capability-based microkernel ecosystem b
 
 ## Status
 
-Implemented, host-tested: a byte-range to sector-span mapper, a 16-sector write-through LRU cache, and `BlockFs::read_bytes`, which reads a `ByteFile` through the cache and returns short counts at end of file. Open: no tpt-filesystem integration, and no byte-level writes to files.
+Implemented, host-tested: a byte-range to sector-span mapper, a 16-sector write-through LRU cache, sector reads and writes through `BlockFs`, and `BlockFs::read_bytes`, which reads a `ByteFile` through the cache and returns short counts at end of file. Open: no tpt-filesystem integration, and no byte-level writes to files.
 
 ## License
 
