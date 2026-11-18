@@ -81,6 +81,20 @@ static mut SCHED: Scheduler = Scheduler::new();
 /// threads it created, so a grant needs a relationship the creator already holds.
 static mut THREAD_CREATOR: [Option<usize>; MAX_THREADS] = [None; MAX_THREADS];
 
+/// How a thread ended, as its creator sees it through `SYS_WAIT`.
+#[derive(Clone, Copy)]
+enum ExitStatus {
+    /// The thread called `SYS_EXIT` with this code.
+    Code(u64),
+    /// The kernel killed the thread after a fault.
+    Faulted,
+}
+
+/// The exit status of each thread slot, once it has ended.
+static mut EXIT_STATUS: [Option<ExitStatus>; MAX_THREADS] = [None; MAX_THREADS];
+/// The creator waiting on each thread slot, if one is in `SYS_WAIT`.
+static mut WAITERS: [Option<usize>; MAX_THREADS] = [None; MAX_THREADS];
+
 /// Per-thread context, indexed by scheduler slot. The kernel stack is used for
 /// syscalls and ring-3 interrupts. The root is the address space, which is
 /// loaded into CR3 when the thread is switched in.
@@ -280,6 +294,10 @@ const SYS_MEM_FREE: u64 = 16;
 /// `SYS_UNMAP(handle, vaddr)`: removes the mapping of the object that `handle`
 /// names, at `vaddr` in the calling thread's address space.
 const SYS_UNMAP: u64 = 17;
+/// `SYS_WAIT(child)`: returns the child's exit code once it has exited. A child
+/// the kernel killed after a fault makes the wait fail with `Fault`. Only the
+/// thread that created the child may wait on it, and only one waiter at a time.
+const SYS_WAIT: u64 = 18;
 
 /// Virtual address where the shared page is mapped. Both demo threads use it.
 /// The memory window: the only addresses a memory object may be mapped at. It
@@ -674,9 +692,11 @@ fn syscall(number: u64, a0: u64, a1: u64, a2: u64) -> Result<u64, SysError> {
         SYS_EXIT => {
             let mut out = serial::Writer;
             let _ = writeln!(out, "user: exit {a0}");
+            notify_exit(ExitStatus::Code(a0));
             release_handles();
             finish()
         }
+        SYS_WAIT => wait_child(a0)?,
         SYS_SEND => {
             let message = read_message(a1).ok_or(SysError::Fault)?;
             ipc_send(CapId::from_raw(a0), message)?;
@@ -1373,6 +1393,8 @@ fn spawn_thread(stack: &mut [u64], entry: u64, cr3: u64) -> Result<usize, &'stat
     unsafe {
         (*addr_of_mut!(CONTEXTS))[slot] = Context { kstack_top, cr3 };
         (*addr_of_mut!(THREAD_CREATOR))[slot] = Some((*addr_of_mut!(SCHED)).current());
+        (*addr_of_mut!(EXIT_STATUS))[slot] = None;
+        (*addr_of_mut!(WAITERS))[slot] = None;
     }
     Ok(slot)
 }
@@ -1613,6 +1635,58 @@ fn revoke_handle(handle: CapId) -> Result<(), SysError> {
 /// Lets go of every capability the running thread holds, as it exits. Each
 /// handle is deleted without revoking anything else, so copies that other threads
 /// hold stay valid. Then the memory objects nothing refers to are reclaimed.
+fn notify_exit(status: ExitStatus) {
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the exit
+        // and waiter tables and the scheduler.
+        unsafe {
+            let me = (*addr_of_mut!(SCHED)).current();
+            (*addr_of_mut!(EXIT_STATUS))[me] = Some(status);
+            if let Some(waiter) = (*addr_of_mut!(WAITERS))[me].take() {
+                (*addr_of_mut!(SCHED)).wake(waiter);
+            }
+        }
+    });
+}
+
+/// Waits for thread `slot` to exit, and returns its exit code. The caller must
+/// have created the thread, and no other thread may be waiting on it.
+fn wait_child(slot: u64) -> Result<u64, SysError> {
+    let child = usize::try_from(slot).map_err(|_| SysError::Invalid)?;
+    if child >= MAX_THREADS {
+        return Err(SysError::Invalid);
+    }
+    let status_result = |status: ExitStatus| match status {
+        ExitStatus::Code(code) => Ok(code),
+        ExitStatus::Faulted => Err(SysError::Fault),
+    };
+    interrupts::without(|| {
+        // SAFETY: interrupts are off, so this thread is the only one using the
+        // tables. The block below ends before the switch.
+        unsafe {
+            let me = (*addr_of_mut!(SCHED)).current();
+            if (*addr_of_mut!(THREAD_CREATOR))[child] != Some(me) {
+                return Err(SysError::Denied);
+            }
+            if let Some(status) = (*addr_of_mut!(EXIT_STATUS))[child] {
+                return status_result(status);
+            }
+            if (*addr_of_mut!(WAITERS))[child].is_some() {
+                return Err(SysError::Busy);
+            }
+            (*addr_of_mut!(WAITERS))[child] = Some(me);
+            if !Scheduler::block_current(addr_of_mut!(SCHED)) {
+                (*addr_of_mut!(WAITERS))[child] = None;
+                return Err(SysError::Deadlock);
+            }
+            match (*addr_of_mut!(EXIT_STATUS))[child] {
+                Some(status) => status_result(status),
+                None => Err(SysError::Invalid),
+            }
+        }
+    })
+}
+
 fn release_handles() {
     const SLOTS: usize = 8;
     interrupts::without(|| {
@@ -1876,6 +1950,12 @@ fn root_drop_self_test() -> bool {
     refused && gone
 }
 
+/// Waits on the fault thread, which the bootstrap created and which has ended by
+/// the time this runs. The wait returns at once and reports the fault as `Fault`.
+fn wait_fault_self_test(fault_slot: usize) -> bool {
+    syscall_dispatch(SYS_WAIT, fault_slot as u64, 0, 0) == SysError::Fault.code()
+}
+
 /// Prints the live capability graph, one line per capability, between
 /// `caps: begin` and `caps: end`. Each line names the table and slot, the object,
 /// the rights as letters (R, W, G, or `-`), the parent slot in the same table, and
@@ -2067,6 +2147,7 @@ fn user_fault(vector: u64, rip: u64, error: u64) -> ! {
         out,
         "user: fault vector {vector} at rip {rip:#x} error {error:#x}"
     );
+    notify_exit(ExitStatus::Faulted);
     release_handles();
     finish()
 }
@@ -2345,6 +2426,7 @@ extern "C" fn root_program() -> ! {
         "syscall",
         "cmp rax, -4096",
         "ja 9f",
+        "mov rbx, rax",
         // Drop the root's authority over the root channel: revoke the handle, with
         // the copies made from it. Using the revoked handle must then be refused.
         "mov rdi, r12",
@@ -2357,6 +2439,13 @@ extern "C" fn root_program() -> ! {
         "mov eax, {map}",
         "syscall",
         "cmp rax, {bad_handle}",
+        "jne 9f",
+        // Wait for the image child, which exits with 7. The first child is still
+        // blocked in a receive, so it is not waited on.
+        "mov rdi, rbx",
+        "mov eax, {wait}",
+        "syscall",
+        "cmp rax, 7",
         "jne 9f",
         // Exit with the value read back from the object's second page.
         "mov rcx, {second_page}",
@@ -2372,6 +2461,7 @@ extern "C" fn root_program() -> ! {
         spawn = const SYS_SPAWN,
         spawn_image = const SYS_SPAWN_IMAGE,
         revoke = const SYS_REVOKE,
+        wait = const SYS_WAIT,
         bad_handle = const SysError::BadHandle.code(),
         mem_create = const SYS_MEM_CREATE,
         map = const SYS_MAP,
@@ -2953,7 +3043,7 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
     // A thread that faults in ring 3 is ended by the fault handler, not the kernel.
     // SAFETY: as for `driver_stack`: STACK_FAULT is handed to the fault thread here.
     let fault_stack = unsafe { &mut (*addr_of_mut!(STACK_FAULT)).0 };
-    spawn_thread(
+    let fault_slot = spawn_thread(
         fault_stack,
         fault_thread_entry as *const () as usize as u64,
         boot_root,
@@ -3082,6 +3172,13 @@ extern "sysv64" fn kmain(handoff: u64) -> ! {
         "\npreempt: ticks={} timer switches={}",
         TICKS.load(Ordering::Relaxed),
         PREEMPTIONS.load(Ordering::Relaxed)
+    );
+    if !wait_fault_self_test(fault_slot) {
+        fail("a faulted thread's wait did not report the fault");
+    }
+    serial::write_str(
+        "wait: a faulted thread's wait reports Fault
+",
     );
     serial::write_str("scheduler: ok\n");
     qemu::exit(qemu::EXIT_SUCCESS)
