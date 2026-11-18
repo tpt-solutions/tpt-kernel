@@ -77,7 +77,8 @@ pub fn init(handler: Handler) {
     // every x86_64 CPU. STAR selects the kernel code and data segments for
     // `syscall`, and the user segments for `sysret`: the user code selector is
     // base + 16 and the user data selector is base + 8, with base 0x10 here.
-    // FMASK clears IF on entry.
+    // FMASK clears IF and DF on entry. DF is cleared so that the kernel's string
+    // operations run forwards, whatever flags the user program left.
     unsafe {
         wrmsr(MSR_EFER, rdmsr(MSR_EFER) | EFER_SCE);
         wrmsr(
@@ -85,7 +86,8 @@ pub fn init(handler: Handler) {
             (0x10u64 << 48) | (u64::from(crate::gdt::KERNEL_CODE) << 32),
         );
         wrmsr(MSR_LSTAR, syscall_entry as *const () as usize as u64);
-        wrmsr(MSR_FMASK, RFLAGS_IF);
+        // RFLAGS.DF is bit 10.
+        wrmsr(MSR_FMASK, RFLAGS_IF | (1 << 10));
         core::ptr::addr_of_mut!(HANDLER).write(handler as *const () as usize as u64);
     }
 }
@@ -94,9 +96,9 @@ pub fn init(handler: Handler) {
 /// stack of the thread that is about to run. `top` is the first address past a
 /// 16-byte aligned stack.
 pub fn set_kernel_stack(top: u64) {
-    // SAFETY: called by the scheduler with interrupts off, when it hands the
-    // processor to a thread. Nothing reads the word except the entry code, which
-    // runs with interrupts off too.
+    // SAFETY: a single-word store on the one CPU. The only reader is
+    // `syscall_entry`, which runs with IF clear (FMASK), so the read cannot
+    // interleave with this kernel-mode write. `top` is 16-byte aligned by contract.
     unsafe {
         core::ptr::addr_of_mut!(STACK_TOP).write(top);
     }
@@ -127,6 +129,15 @@ unsafe extern "C" fn syscall_entry() {
         "mov rsi, rdi",
         "mov rdi, rax",
         "call qword ptr [{handler}]",
+        // Only rax carries the result. The other argument registers still hold
+        // values the handler left, and those are kernel values, so clear them
+        // before returning to ring 3. rcx and r11 are restored by sysretq.
+        "xor edi, edi",
+        "xor esi, esi",
+        "xor edx, edx",
+        "xor r8d, r8d",
+        "xor r9d, r9d",
+        "xor r10d, r10d",
         "add rsp, 8",
         "pop r11",
         "pop rcx",

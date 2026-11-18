@@ -60,8 +60,9 @@ fn read_msr(msr: u32) -> u64 {
 }
 
 fn write_msr(msr: u32, value: u64) {
-    // SAFETY: called with the value read from the same register plus the enable
-    // bit, so the other fields keep their firmware values.
+    // SAFETY: `msr` is IA32_APIC_BASE (0x1B), which exists on every CPU with an
+    // APIC. The only caller passes the value it just read from that MSR with
+    // the enable bit set, so the base address and other fields keep their values.
     unsafe {
         asm!("wrmsr", in("ecx") msr, in("eax") value as u32, in("edx") (value >> 32) as u32,
              options(nomem, nostack, preserves_flags));

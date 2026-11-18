@@ -206,6 +206,9 @@ global_asm!(
     dispatch = sym exception_dispatch,
 );
 
+// SAFETY (for the block): each symbol below is defined by the `ISR_STUB`
+// expansion in the `global_asm!` above, with the same name. The stubs expect the
+// CPU's interrupt frame, so they may only be used as IDT targets, never called.
 unsafe extern "C" {
     fn isr_stub_0();
     fn isr_stub_1();
@@ -326,9 +329,10 @@ pub fn load() {
     let table = ptr::addr_of_mut!(IDT).cast::<Gate>();
     for (vector, stub) in STUBS.iter().enumerate() {
         let gate = Gate::interrupt(*stub as usize as u64, KERNEL_CODE);
-        // SAFETY: `vector` is below EXCEPTION_VECTORS, which is below
-        // IDT_ENTRIES, so the write stays inside `IDT`. Interrupts are disabled
-        // (the entry sequence runs `cli`), so no handler reads the table yet.
+        // SAFETY: `vector` indexes `STUBS`, which has `STUB_COUNT` (48) entries.
+        // That is below `IDT_ENTRIES`, so the write stays inside `IDT`. `ptr::write`
+        // does not read the old entry. `load` runs with interrupts disabled, as its
+        // doc requires, so no handler reads the table while it is being built.
         unsafe { ptr::write(table.add(vector), gate) };
     }
     let pointer = Pointer {

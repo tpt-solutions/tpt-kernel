@@ -9,8 +9,9 @@ const IF: u64 = 1 << 9;
 
 /// Enables interrupts.
 pub fn enable() {
-    // SAFETY: ring 0. `sti` only sets the interrupt flag. The IDT is loaded
-    // before the kernel calls this.
+    // SAFETY: ring 0. `sti` only sets the interrupt flag. Enabling interrupts is
+    // safe only once `idt::load` has run. Otherwise the first interrupt has no
+    // gate and faults. That ordering is the caller's obligation.
     unsafe { asm!("sti", options(nomem, nostack)) };
 }
 

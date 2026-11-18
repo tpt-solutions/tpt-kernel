@@ -60,10 +60,11 @@ fn tss_descriptor(base: u64, size: u64) -> [u64; 2] {
 pub fn load() {
     let tss_base = tss::address();
     let tss_size = tss::size();
-    // SAFETY: ring 0, called once by the bootstrap thread before any other code
-    // uses the segments. Interrupts are disabled. Writing the TSS slots of
-    // `GDT` changes no segment that is in use, since the kernel reloads its
-    // selectors right after.
+    // SAFETY: ring 0. `GDT` slots 5 and 6 are written before `lgdt` reads the
+    // table, so the TSS descriptor is complete when `ltr` uses it. The `retfq`
+    // and segment reloads use KERNEL_CODE, KERNEL_DATA and TSS_SELECTOR, all of
+    // which name entries of this table. `pointer` lives on this stack frame across
+    // the `lgdt`.
     unsafe {
         let table = ptr::addr_of_mut!(GDT).cast::<u64>();
         let [low, high] = tss_descriptor(tss_base, tss_size);

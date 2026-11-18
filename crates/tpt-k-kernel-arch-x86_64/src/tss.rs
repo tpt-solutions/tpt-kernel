@@ -48,8 +48,10 @@ pub const fn size() -> u64 {
 /// Sets the stack that ring-3 entries switch to. `top` is the first address past
 /// the stack, and it must be 16-byte aligned.
 pub fn set_kernel_stack(top: u64) {
-    // SAFETY: the TSS is only written here and read by the CPU on privilege
-    // changes. The caller is the bootstrap thread, before any ring-3 code runs.
+    // SAFETY: the kernel runs on one CPU, and the TSS is read by that CPU only on
+    // a ring-3 to ring-0 transition. That cannot overlap this kernel-mode store,
+    // and a single aligned u64 write is not torn. `rsp0` is a packed field, but
+    // assigning to it writes the value in place without creating a reference.
     unsafe {
         (*addr_of_mut!(TSS)).rsp0 = top;
     }
