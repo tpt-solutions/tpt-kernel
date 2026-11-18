@@ -63,7 +63,7 @@ const FINAL_TEXT: &str = "scheduler: ok";
 
 /// Licenses the CVE and license gate accepts, as `scripts/check.sh` lists them.
 const LICENSES: &str =
-    "MIT,Unicode-3.0,Unicode-DFS-2016,BSD-2-Clause,BSD-3-Clause,ISC,Zlib,Unlicense,CC0-1.0";
+    "MIT,Unicode-3.0,Unicode-DFS-2016,BSD-2-Clause,BSD-3-Clause,ISC,Zlib,Unlicense,CC0-1.0,MIT-0,BSL-1.0";
 
 /// Where the sibling repos are cloned from.
 const ORG_URL: &str = "https://github.com/tpt-solutions";

@@ -25,11 +25,21 @@ Gate used: `tpt-cargo-vitals check --enforce-license "MIT,Unicode-3.0,Unicode-DF
    `ciborium`, `ciborium-io`, `ciborium-ll`, `borsh-derive`, `sync_wrapper`, `rpassword`, `rtoolbox`, `unicode-general-category`, `witx`, `ring` (`Apache-2.0 AND ISC`), `regorus` (`MIT AND Apache-2.0 AND BSD-3-Clause`).
    Each needs a replacement, or a documented exception in LICENSE-POLICY.md.
 
-## Policy decisions needed
+## Policy decisions
 
-- **`MIT-0`** (`borrow-or-share`, pulled in by mcpbox and concord). It is permissive with no attribution. Allow it?
-- **`ryu`** is `Apache-2.0 OR BSL-1.0`. It passes only if `BSL-1.0` is allowed. Allow it, or accept the Apache-only failure?
-- **`CDLA-Permissive-2.0`** (`webpki-roots`, mcpbox). A data license, not code. Allow it?
+Decided 2026-11-18, following the recommendations:
+
+- **`MIT-0`**: allowed. It is permissive, and `LICENSE-POLICY.md` allows it. The
+  tpt-k gate (`xtask check` and the CI license job) now includes it.
+- **`BSL-1.0`**: allowed, for `ryu` (`Apache-2.0 OR BSL-1.0`). It is in
+  `LICENSE-POLICY.md` and in the tpt-k gate.
+- **`CDLA-Permissive-2.0`**: not added to the gate. It is a data license, and
+  the approved exception is for `webpki-roots` in `tpt-mcpbox` only. A global
+  allowlist entry would also allow it everywhere, so the exception stays scoped
+  in `LICENSE-POLICY.md`.
+
+The sibling repos' Apache-only dependencies are not decided here: each needs a
+replacement or a written exception, and that work is in those repos.
 
 ## Tool limitation
 
