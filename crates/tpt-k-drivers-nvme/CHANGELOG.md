@@ -9,4 +9,7 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Submission and completion entry encodings, admin and I/O command builders, submission and completion ring math, doorbell offsets, and PRP planning. All host-tested; no device I/O.
+- 64-byte submission and 16-byte completion entry encodings, with the phase tag on completions.
+- Admin and I/O command builders for Identify, Create I/O CQ and SQ, Read, Write and Flush.
+- Submission and completion ring math, doorbell offsets for any `CAP.DSTRD`, and PRP planning for transfers of one or two pages or a list.
+- All host-tested; no device I/O.

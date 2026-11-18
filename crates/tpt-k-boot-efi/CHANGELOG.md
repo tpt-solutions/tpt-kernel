@@ -9,6 +9,8 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- The `unsafe` helpers (`find_configuration_table`, `locate_handles`, `allocate_pages`, `get_memory_map`) document why each firmware call is sound.
 - UEFI 2.10 system table layout with reserved slots, so offsets match the specification.
-- Typed function pointers for the boot and runtime service calls the loader needs.
+- Typed function pointers for the boot-service, text-output, file-system and file calls the loader makes. Runtime services are not declared.
+- Lookups for firmware facts: `find_configuration_table` (for the ACPI 2.0 RSDP), `handle_protocol`, `locate_handles`, and the Graphics Output Protocol types.
+- `Console` for ASCII text output, and `encode_path` for UTF-16 file paths.
+- The `unsafe` helpers document the firmware state each call needs, and why the call is sound.

@@ -9,10 +9,9 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- The `unsafe` blocks state their invariants.
-- UEFI loader that reads `TPTK\KERNEL.ELF` from the boot volume.
-- Places the kernel's `PT_LOAD` segments at their physical addresses, exits boot services and jumps to the entry point.
-- The kernel is entered with the 80-byte handoff record in `rdi` (memory map, RSDP, framebuffer). The module docs described a zero argument; they are corrected.
+- UEFI loader that reads `TPTK\KERNEL.ELF` from the boot volume. It tries the image's own device first, then every file-system handle, so partitioned disks work.
+- Places the kernel's `PT_LOAD` segments at their physical addresses, leaves boot services and jumps to the entry point.
+- The kernel is entered with an 80-byte handoff record in `rdi` (`BootInfo`, magic `TPTKBOOT`, version 2). It holds the UEFI memory map (address, byte length and descriptor size), the ACPI 2.0 RSDP address and the GOP framebuffer. An absent RSDP or framebuffer is recorded as zero.
 
 ### Fixed
 

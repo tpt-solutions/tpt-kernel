@@ -9,5 +9,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- Deterministic mutation tests cover the configuration and descriptor parsers.
 - Device, configuration, interface and endpoint descriptor parser, with HID boot keyboard and mouse recognition. Descriptors it does not know are returned unparsed for the class driver.
+- Deterministic mutation tests cover the configuration and descriptor parsers.

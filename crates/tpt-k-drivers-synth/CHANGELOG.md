@@ -9,6 +9,6 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- `HardwareId` and `Layout` types, with exact-ID and class-code matching.
+- `HardwareId` and `Layout` types. A layout matches a device when every field it sets equals the device's: an exact vendor and device pair, class codes, or any mix.
 - `match_best` precedence: exact vendor and device first, then more set fields, then priority, then listed order.
 - `BUILTIN` table: virtio-blk (legacy and modern), NVMe, xHCI, and generic USB host controllers.

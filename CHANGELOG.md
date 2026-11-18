@@ -11,6 +11,10 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 
 ### Added
 
+- `SYS_WAIT` (number 18) lets a thread wait for a child it created, and returns the child's exit code. A child the kernel ended after a fault makes the wait fail with `Fault`. Only the creator may wait, with one waiter at a time, and a wait that would block with no other thread ready fails with `Deadlock`. The boot self-test `wait_fault_self_test` checks the fault case, and the demo root waits for its image child.
+- `WAIT-1` (`SYS_WAIT`) and `FUZZ-1` (the five mutation suites) in the assurance graph, with their spec lines. The campaign logs are in `docs/assurance/campaigns/`.
+- `RIGHTS-1`, proved with z3 in `docs/assurance/proofs/rights.py`: for 64-bit rights words, derivation, grant and token attenuation never give a right the source does not hold. The recorded verdicts are in `rights.py.log`. The proof is over a model of the kernel's rights bits, not over the Rust code.
+- Host timing of endpoint and capability operations (`bench_endpoint_send_then_receive`, `bench_capability_mint_derive_revoke`, ignored tests), recorded in `docs/perf/host-ipc.md`. These time the data-structure operations only: about 10.8 ns per endpoint pair and 9.6 ns per capability round. They are not kernel IPC latency.
 - `SYS_UNMAP` (number 17) removes a mapping made by `SYS_MAP`. Each memory object records up to 4 mappings, and `SYS_MEM_FREE` refuses while any is recorded (boot self-test `mem: unmapped object was freed`).
 - Every `unsafe` block outside `tpt-k-kernel/src/main.rs` (98 sites, still open) now states its invariants. `replay/golden.txt` is regenerated for the new self-test.
 - Capability revocation at exit, seL4-style. An exiting thread deletes its handles without revoking the copies other threads hold, and the derivation tree is re-linked (`cap::delete_across`). Memory objects that nothing refers to are then reclaimed, which returns their frames. Revoking the last handle to an object reclaims it too.
@@ -28,7 +32,7 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 
 - `tpt-k-build doctor`: checks the Rust toolchain and targets, QEMU, OVMF, the sibling repos and the git hooks path. It prints the fix for each problem, for Windows and Linux.
 - Ring-3 exceptions end only the faulting thread. The kernel prints `user: fault vector N` and goes on. A smoke-test thread checks this.
-- `SYS_MEM_FREE` frees an unmapped memory object, revokes every handle to it in every table, and returns its frames. Mapped objects return `EBUSY`, since there is no unmap yet.
+- `SYS_MEM_FREE` frees an unmapped memory object, revokes every handle to it in every table, and returns its frames. Mapped objects return `EBUSY` until they are unmapped with `SYS_UNMAP`.
 - Root `README.md`: a quickstart, the layer map and a status table.
 - C-named exports of the string and memory helpers in `tpt-k-userland-libc`, behind its `c-abi` feature.
 - A `Spawner` trait in `tpt-k-userland`, so external commands and, later, pipes and redirections can be built and tested against a fake.
@@ -48,6 +52,9 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 
 - The QEMU smoke test reads the serial transcript from QEMU's stdout pipe, not from a file. The file dropped kernel output on this host. The smoke test also checks the capability dump.
 - The bootstrap thread disables interrupts after the RTC check, so it finishes setting up the demo before any demo thread runs.
+- `SYS_WAIT` releases the child's address space once it collects the exit: the child's page tables, and the frames it owns (recorded at spawn). Leaves it shares with its template are kept. `PageTables::release_root` frees the tables of a forked address space and refuses the boot and active spaces. A child that is never waited on keeps its space, which is bounded by the two spawn slots.
+- The proof gate needs a recorded verdict. A proof item must have a log beside its script (`<script>.log`) with a line `<property>: unsat` for each property. The gate reads the record and does not run the solver.
+- Mutation tests read `TPT_FUZZ_ITERATIONS` when it is set, and keep 2000 as the default. A seeded campaign of one million iterations per parser (ACPI, FDT, PCI, USB and IPC frames) passed. It is not coverage-guided.
 
 - The layer docs in `docs/layers/` no longer call the crates empty placeholders.
   They point to the layer checklists and crate READMEs, which are kept current.
@@ -74,10 +81,11 @@ The repo has no release yet, so versions follow [release.md](docs/release.md).
 - Spawned children inherited the boot space's window mappings with no record; they now fork from a template taken before any object is mapped.
 - The syscall entry did not clear DF; `FMASK` now clears it with IF.
 - The loader's kernel segment end (`paddr + mem_size`) could wrap; it is now `checked_add`.
+- The syscall entry did not preserve the caller's callee-saved registers (`rbx`, `rbp`, `r12` to `r15`). A handler that blocked let another thread run, and that thread's values could reach the caller. The entry now saves and restores them.
 
 ### Not yet
 
-- Coverage-guided fuzzing campaigns, an SMT or machine-checked formal model, and
-  the `tpt-concord` specification of these invariants. See
-  `docs/assurance/invariants.md`.
+- Coverage-guided fuzzing (cargo-fuzz or libFuzzer). The seeded mutation campaigns are done.
+- SMT over unbounded trees: `RIGHTS-1` covers the rights bit model, but revocation over unbounded capability trees is open. See `docs/assurance/invariants.md`.
+- Context switch and interrupt latency timings. The host timings cover only the data structures.
 - The external TPT repos do not all pass the license gate yet. See `DEP-AUDIT.md`.

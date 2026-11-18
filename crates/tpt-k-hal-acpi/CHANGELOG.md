@@ -9,6 +9,6 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- AML device discovery (`aml` module): walks DSDT and SSDT bodies for each device's `_HID` and `_ADR`. Control methods are skipped by length and never evaluated, and unknown terms stop the walk with an error. Host-tested, including a deterministic mutation test.
-- Deterministic mutation tests cover the RSDP, system table, MADT and MCFG parsers.
-- RSDP and table-list parsing, the MADT (local APICs, I/O APICs, interrupt overrides, x2APIC) and the MCFG ECAM windows. Every table is checked for its signature, length and checksum. DSDT and SSDT AML is not parsed yet, and there is no fuzzing yet.
+- RSDP and table-list parsing (RSDT and XSDT), the MADT (local APICs, I/O APICs, interrupt overrides, NMIs, address overrides and x2APIC) and the MCFG ECAM windows. Tables are checked for length and checksum; the MADT and MCFG parsers also check their signature.
+- AML device discovery (`aml` module): walks DSDT and SSDT bodies for each device's `_HID` and `_ADR`. Control methods are skipped by length and never evaluated, and terms the walker cannot skip stop the walk with an error.
+- Deterministic mutation tests cover the RSDP, system table, MADT and MCFG parsers. The iteration count can be raised with `TPT_FUZZ_ITERATIONS`.

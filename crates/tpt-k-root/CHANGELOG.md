@@ -9,5 +9,5 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- `CapService`: the root's capability service over `tpt-k-ipc`. MINT, DELEGATE, REVOKE and ATTENUATE check signed tokens and rights before touching the table. Host-tested.
+- `CapService`: the root's capability service over `tpt-k-ipc`. The MINT, DELEGATE, REVOKE and ATTENUATE opcodes check the presented signed token and the rights each one needs before touching the table. `issue_root` hands out the first token. Host-tested.
 - `main.rs` is still a placeholder with no kernel handoff.

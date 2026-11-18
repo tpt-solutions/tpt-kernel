@@ -9,6 +9,6 @@ and this crate follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html
 
 ### Added
 
-- HID report descriptor parser into fixed-capacity input fields, with push/pop, report IDs, and long-item skipping.
-- Boot keyboard report decoding with modifiers, roll-over detection, new-press diffing and a US usage-to-character table.
-- Boot mouse report decoding (buttons and signed deltas).
+- HID report descriptor parser into fixed-capacity input fields (`ReportMap`), with push/pop, report IDs, and long-item skipping.
+- Boot keyboard report decoding (`KeyboardReport`) with modifiers, roll-over detection, new-press diffing (`new_presses`) and a US usage-to-character table (`usage_to_char`).
+- Boot mouse report decoding (`MouseReport`): buttons and signed deltas.
