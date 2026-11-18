@@ -138,6 +138,9 @@ pub enum TokenError {
     /// The rights word sets bits this crate does not define. Such a word is
     /// refused rather than masked, so every wire form maps to one token.
     BadRights,
+    /// The requested rights are not a subset of the token's rights. The token
+    /// itself is valid.
+    NotNarrower,
 }
 
 impl Token {
@@ -165,7 +168,7 @@ impl Token {
     /// requested rights are not a subset.
     pub fn attenuate(&self, key: &[u8; 32], rights: Rights) -> Result<Self, TokenError> {
         let cap = self.verify(key)?;
-        let narrowed = cap.attenuate(rights).ok_or(TokenError::BadTag)?;
+        let narrowed = cap.attenuate(rights).ok_or(TokenError::NotNarrower)?;
         Ok(Self::mint(key, narrowed))
     }
 
@@ -312,7 +315,10 @@ mod tests {
         let child = t.attenuate(&KEY, Rights::RECV).unwrap();
         assert_eq!(child.verify(&KEY), Ok(cap(Rights::RECV)));
         // Asking for more than the token holds is refused.
-        assert_eq!(t.attenuate(&KEY, Rights::GRANT), Err(TokenError::BadTag));
+        assert_eq!(
+            t.attenuate(&KEY, Rights::GRANT),
+            Err(TokenError::NotNarrower)
+        );
         // A forged token cannot be attenuated either.
         let mut bytes = t.to_bytes();
         bytes[12] ^= 1;
