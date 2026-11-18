@@ -377,6 +377,87 @@
           "name": "revoke_mapped_self_test"
         }
       ]
+    },
+    {
+      "id": "WAIT-1",
+      "layer": "tpt-k-kernel",
+      "critical": false,
+      "statement": "A thread can wait only on a thread it created. A wait returns the child's exit code, and a child the kernel ended after a fault makes the wait fail with Fault.",
+      "evidence": [
+        {
+          "kind": "test",
+          "path": "crates/tpt-k-kernel/src/main.rs",
+          "name": "wait_fault_self_test"
+        }
+      ]
+    },
+    {
+      "id": "FUZZ-1",
+      "layer": "tpt-k-hal, tpt-k-ipc-serde",
+      "critical": false,
+      "statement": "The ACPI, FDT, PCI, USB and IPC frame parsers never panic on mutated input. Seeded campaigns of one million iterations per parser found no panic.",
+      "evidence": [
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-acpi/src/mutation_tests.rs",
+          "name": "mutation_rsdp_never_panics"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-acpi/src/mutation_tests.rs",
+          "name": "mutation_sdt_and_root_tables_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-acpi/src/mutation_tests.rs",
+          "name": "mutation_madt_entries_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-acpi/src/mutation_tests.rs",
+          "name": "mutation_mcfg_entries_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-fdt/src/mutation_tests.rs",
+          "name": "mutation_fdt_surface_never_panics"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-fdt/src/mutation_tests.rs",
+          "name": "mutation_reg_iter_never_panics"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-pci/src/mutation_tests.rs",
+          "name": "mutation_bar_decode_and_size_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-pci/src/mutation_tests.rs",
+          "name": "mutation_enumerate_and_probe_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-usb/src/mutation_tests.rs",
+          "name": "mutation_configuration_and_descriptors_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-hal-usb/src/mutation_tests.rs",
+          "name": "mutation_device_and_leaf_descriptors_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-ipc-serde/src/mutation_tests.rs",
+          "name": "mutation_decode_and_frame_access_never_panic"
+        },
+        {
+          "kind": "property",
+          "path": "crates/tpt-k-ipc-serde/src/mutation_tests.rs",
+          "name": "mutation_random_inputs_never_panic"
+        }
+      ]
     }
   ]
 }
