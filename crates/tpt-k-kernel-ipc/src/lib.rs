@@ -9,4 +9,7 @@
 pub mod cap;
 pub mod endpoint;
 
+#[cfg(test)]
+mod bench_tests;
+
 pub use cap::{CapError, CapId, CapTable, ObjectId, Rights};
