@@ -156,3 +156,4 @@ INV ROOT-1: After the root thread revokes its channel handle, using that handle 
 INV MEM-1: Revoking the last handle of a memory object removes every mapping of the object before its frames are returned, so no thread keeps reaching the frames.
 INV WAIT-1: A thread can wait only on a thread it created. A wait returns the child's exit code, and a child the kernel ended after a fault makes the wait fail with Fault.
 INV FUZZ-1: The ACPI, FDT, PCI, USB and IPC frame parsers never panic on mutated input. Seeded campaigns of one million iterations per parser found no panic.
+INV RIGHTS-1: For rights words of any width up to 64 bits, the capability derive and grant checks and the token attenuation check never produce a right the source does not hold, and derivation requires GRANT on the source. Checked by z3 over the bit-level model in docs/assurance/proofs/rights.py. The model is the kernel's contains() and GRANT bit, not the Rust code itself.

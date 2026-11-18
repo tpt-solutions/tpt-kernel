@@ -1,0 +1,4 @@
+derive_never_widens: unsat
+derive_needs_grant: unsat
+token_attenuation_never_widens: unsat
+wrong_rule_widens: sat

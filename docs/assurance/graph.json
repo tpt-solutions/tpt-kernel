@@ -458,6 +458,29 @@
           "name": "mutation_random_inputs_never_panic"
         }
       ]
+    },
+    {
+      "id": "RIGHTS-1",
+      "layer": "tpt-k-kernel-ipc, tpt-k-ipc-cap",
+      "critical": true,
+      "statement": "For rights words of any width up to 64 bits, the capability derive and grant checks and the token attenuation check never produce a right the source does not hold, and derivation requires GRANT on the source. Checked by z3 over the bit-level model in docs/assurance/proofs/rights.py. The model is the kernel's contains() and GRANT bit, not the Rust code itself.",
+      "evidence": [
+        {
+          "kind": "proof",
+          "path": "docs/assurance/proofs/rights.py",
+          "name": "derive_never_widens"
+        },
+        {
+          "kind": "proof",
+          "path": "docs/assurance/proofs/rights.py",
+          "name": "derive_needs_grant"
+        },
+        {
+          "kind": "proof",
+          "path": "docs/assurance/proofs/rights.py",
+          "name": "token_attenuation_never_widens"
+        }
+      ]
     }
   ]
 }
