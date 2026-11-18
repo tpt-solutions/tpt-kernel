@@ -9,6 +9,15 @@ use std::vec::Vec;
 
 const ITERATIONS: usize = 2000;
 
+/// The iteration count: `ITERATIONS`, or the value of `TPT_FUZZ_ITERATIONS` when it
+/// is set, so a longer campaign runs the same seeded cases for more iterations.
+fn iterations() -> usize {
+    std::env::var("TPT_FUZZ_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(ITERATIONS)
+}
+
 struct Rng(u64);
 
 impl Rng {
@@ -88,7 +97,7 @@ fn mutation_configuration_and_descriptors_never_panic() {
     assert!(Configuration::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x1111_2222_3333_4444);
     let mut parsed = 0usize;
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let v = mutate(&mut rng, &base);
         let Ok(config) = Configuration::parse(&v) else {
             continue;
@@ -123,7 +132,7 @@ fn mutation_device_and_leaf_descriptors_never_panic() {
     assert!(Endpoint::parse(&endpoint).is_ok());
     assert!(Interface::parse(&interface).is_ok());
     let mut rng = Rng(0x5555_6666_7777_8888);
-    for i in 0..ITERATIONS {
+    for i in 0..iterations() {
         let v = match i % 3 {
             0 => mutate(&mut rng, &base),
             1 => mutate(&mut rng, &endpoint),

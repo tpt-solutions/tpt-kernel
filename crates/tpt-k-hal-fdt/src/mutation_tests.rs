@@ -9,6 +9,15 @@ use std::vec::Vec;
 
 const ITERATIONS: usize = 2000;
 
+/// The iteration count: `ITERATIONS`, or the value of `TPT_FUZZ_ITERATIONS` when it
+/// is set, so a longer campaign runs the same seeded cases for more iterations.
+fn iterations() -> usize {
+    std::env::var("TPT_FUZZ_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(ITERATIONS)
+}
+
 struct Rng(u64);
 
 impl Rng {
@@ -169,7 +178,7 @@ fn mutation_fdt_surface_never_panics() {
         "device_type",
         "",
     ];
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let v = mutate(&mut rng, &base);
         let Ok(fdt) = Fdt::parse(&v) else {
             continue;
@@ -193,7 +202,7 @@ fn mutation_fdt_surface_never_panics() {
 #[test]
 fn mutation_reg_iter_never_panics() {
     let mut rng = Rng(0x0F0F_F0F0_1357_9BDF);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let n = rng.below(65);
         let bytes: Vec<u8> = (0..n).map(|_| rng.next() as u8).collect();
         let addr = rng.below(5);

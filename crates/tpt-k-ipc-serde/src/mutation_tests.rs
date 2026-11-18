@@ -10,6 +10,15 @@ use std::vec::Vec;
 
 const ITERATIONS: usize = 2000;
 
+/// The iteration count: `ITERATIONS`, or the value of `TPT_FUZZ_ITERATIONS` when it
+/// is set, so a longer campaign runs the same seeded cases for more iterations.
+fn iterations() -> usize {
+    std::env::var("TPT_FUZZ_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(ITERATIONS)
+}
+
 struct Rng(u64);
 
 impl Rng {
@@ -97,7 +106,7 @@ fn mutation_decode_and_frame_access_never_panic() {
 
     let mut rng = Rng(0xFACE_B00C_0000_0003);
     let mut accepted = 0usize;
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let mut v = mutate(&mut rng, &base);
         if rng.below(2) == 0 {
             repair_checksum(&mut v);
@@ -121,7 +130,7 @@ fn mutation_decode_and_frame_access_never_panic() {
 #[test]
 fn mutation_random_inputs_never_panic() {
     let mut rng = Rng(0x0DDB_A110_0000_0004);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let n = rng.below(300);
         let bytes: Vec<u8> = (0..n).map(|_| rng.next() as u8).collect();
         let _ = decode(&bytes);

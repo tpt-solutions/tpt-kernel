@@ -9,6 +9,15 @@ use std::vec::Vec;
 
 const ITERATIONS: usize = 2000;
 
+/// The iteration count: `ITERATIONS`, or the value of `TPT_FUZZ_ITERATIONS` when it
+/// is set, so a longer campaign runs the same seeded cases for more iterations.
+fn iterations() -> usize {
+    std::env::var("TPT_FUZZ_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(ITERATIONS)
+}
+
 struct Rng(u64);
 
 impl Rng {
@@ -177,7 +186,7 @@ fn mutation_rsdp_never_panics() {
     let base = rsdp_sample();
     assert!(Rsdp::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let mut v = mutate(&mut rng, &base);
         if rng.below(2) == 0 {
             refix_rsdp(&mut v);
@@ -194,7 +203,7 @@ fn mutation_sdt_and_root_tables_never_panic() {
         "samples must be valid"
     );
     let mut rng = Rng(0x0123_4567_89AB_CDEF);
-    for i in 0..ITERATIONS {
+    for i in 0..iterations() {
         let mut v = mutate(&mut rng, &bases[i % 2]);
         if rng.below(2) == 0 {
             refix_sdt(&mut v);
@@ -214,7 +223,7 @@ fn mutation_madt_entries_never_panic() {
     let base = madt_sample();
     assert!(Madt::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0xDEAD_BEEF_CAFE_F00D);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let mut v = mutate(&mut rng, &base);
         if rng.below(2) == 0 {
             refix_sdt(&mut v);
@@ -234,7 +243,7 @@ fn mutation_mcfg_entries_never_panic() {
     let base = mcfg_sample();
     assert!(Mcfg::parse(&base).is_ok(), "sample must be valid");
     let mut rng = Rng(0x5EED_5EED_5EED_5EED);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let mut v = mutate(&mut rng, &base);
         if rng.below(2) == 0 {
             refix_sdt(&mut v);

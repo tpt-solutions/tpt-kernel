@@ -1,0 +1,8 @@
+# Seeded mutation campaign: tpt-k-hal-pci
+# Command: TPT_FUZZ_ITERATIONS=1000000 cargo test -p tpt-k-hal-pci mutation -- --test-threads=1
+# Seeds are fixed in the test source, so the cases repeat on every run.
+# Timing lines from cargo are left out so the file is stable.
+running 2 tests
+test mutation_tests::mutation_bar_decode_and_size_never_panic ... ok
+test mutation_tests::mutation_enumerate_and_probe_never_panic ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 23.50s

@@ -1,0 +1,10 @@
+# Seeded mutation campaign: tpt-k-hal-acpi
+# Command: TPT_FUZZ_ITERATIONS=1000000 cargo test -p tpt-k-hal-acpi mutation -- --test-threads=1
+# Seeds are fixed in the test source, so the cases repeat on every run.
+# Timing lines from cargo are left out so the file is stable.
+running 4 tests
+test mutation_tests::mutation_madt_entries_never_panic ... ok
+test mutation_tests::mutation_mcfg_entries_never_panic ... ok
+test mutation_tests::mutation_rsdp_never_panics ... ok
+test mutation_tests::mutation_sdt_and_root_tables_never_panic ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 29.49s

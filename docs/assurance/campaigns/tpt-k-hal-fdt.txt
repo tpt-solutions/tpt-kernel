@@ -1,0 +1,8 @@
+# Seeded mutation campaign: tpt-k-hal-fdt
+# Command: TPT_FUZZ_ITERATIONS=1000000 cargo test -p tpt-k-hal-fdt mutation -- --test-threads=1
+# Seeds are fixed in the test source, so the cases repeat on every run.
+# Timing lines from cargo are left out so the file is stable.
+running 2 tests
+test mutation_tests::mutation_fdt_surface_never_panics ... ok
+test mutation_tests::mutation_reg_iter_never_panics ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 9.80s

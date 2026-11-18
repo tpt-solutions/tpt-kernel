@@ -9,6 +9,15 @@ use std::vec::Vec;
 
 const ITERATIONS: usize = 2000;
 
+/// The iteration count: `ITERATIONS`, or the value of `TPT_FUZZ_ITERATIONS` when it
+/// is set, so a longer campaign runs the same seeded cases for more iterations.
+fn iterations() -> usize {
+    std::env::var("TPT_FUZZ_ITERATIONS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(ITERATIONS)
+}
+
 struct Rng(u64);
 
 impl Rng {
@@ -45,7 +54,7 @@ impl ConfigAccess for RandomConfig {
 #[test]
 fn mutation_bar_decode_and_size_never_panic() {
     let mut rng = Rng(0x0BAD_5EED_0000_0001);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let low = rng.next() as u32;
         let high = if rng.next() & 1 == 0 {
             Some(rng.next() as u32)
@@ -67,7 +76,7 @@ fn mutation_bar_decode_and_size_never_panic() {
 #[test]
 fn mutation_enumerate_and_probe_never_panic() {
     let mut rng = Rng(0x0C0F_FEE0_0000_0002);
-    for _ in 0..ITERATIONS {
+    for _ in 0..iterations() {
         let mut access = RandomConfig { seed: rng.next() };
         // Keep the bus range small so each iteration stays cheap in debug mode.
         let start = (rng.next() % 4) as u8;
