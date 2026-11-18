@@ -87,6 +87,12 @@ Checked with `cargo tree --target all -e all` on 2026-11-18.
   TLS 1.3 handshakes with example.com, www.google.com and api.github.com, each with
   certificate validation against the bundled roots. Only `rsa` remains, through
   `tpt-crypto-rustls`, and `deny.toml` accepts it until 2027-02-09.
+- **Live checks of the provider (2026-11-18):** TLS 1.3 handshakes to example.com,
+  www.google.com and api.github.com, each with TLS_AES_128_GCM_SHA256. TLS 1.2
+  handshakes to the same three, each with ECDHE_ECDSA_WITH_AES_128_GCM_SHA256.
+  All six returned HTTP 200 with certificate validation. None of these servers
+  used an RSA certificate for TLS 1.2, so the RSA path is covered only by the
+  unit tests and the local handshake matrix.
 - **Decision (2026-11-18, the maintainer):** the unaudited, client-only provider
   may carry real outbound traffic. `tpt-crypto-rustls`'s README asks for an audit
   before that, and the owner has chosen to accept the risk for now. The audit
