@@ -87,6 +87,13 @@ Approved exceptions:
   This is a data license covering the bundled Mozilla CA root store, not code. It
   is used for TLS trust roots. Scope: this crate only, enforced with
   `--exception webpki-roots=CDLA-Permissive-2.0`.
+- **`witx` 0.9.x, `Apache-2.0` alone** (approved 2026-11-18, `tpt-mcpbox`). It is
+  a normal dependency through `wasmtime-wasi` → `wiggle` → `wiggle-generate` →
+  `wiggle-macro`, a proc macro. It is code generation that runs at build time,
+  and is not linked into the shipped runtime. It stays until `tpt-wasm` replaces
+  Wasmtime in `tpt-mcpbox`, and that replacement removes the exception. Scope: this
+  crate only, enforced with `--exception witx=Apache-2.0`. Recorded as well in
+  `tpt-mcpbox/deny.toml`. No expiry date is set; the trigger is `tpt-wasm`.
 
 ## Open items
 

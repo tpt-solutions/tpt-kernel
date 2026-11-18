@@ -64,13 +64,45 @@ Results, with the policy allowlist, `--dev-allow Apache-2.0`, and the
 | tpt-crypto | pass | 0 | |
 | tpt-fabric | pass | 0 | |
 | tpt-filesystem | pass | 0 | |
-| tpt-crypto-rustls | pass | 7 | `rustls-rustcrypto` 0.0.2-alpha; no acceptance recorded in this repo |
-| tpt-mcpbox | **fail**: `witx` 0.9.1 (`Apache-2.0`, normal) | 7 | the same 7 advisories, accepted in its `deny.toml` until 2027-02-09 |
+| tpt-crypto-rustls | pass | 7 (see below) | `deny.toml` added in `936589f`; `cargo deny check` passes |
+| tpt-mcpbox | pass (`witx` and `webpki-roots` as recorded exceptions) | 7 (see below) | `cargo deny check` passes; its `deny.toml` accepts the 7 until 2027-02-09 |
+
+The sibling repos run `cargo-deny` in CI, not vitals. `cargo deny check` passes
+in primitives, simd, crypto, fabric, filesystem, mcpbox and crypto-rustls. vitals
+does not read `deny.toml`, so its CVE count still lists the accepted advisories.
 
 `witx` is a normal dependency: `wasmtime-wasi` → `wiggle` → `wiggle-generate`
 → `wiggle-macro` (a proc macro, so it runs at build time and is not linked into
-the binary). The dev-only allowance does not cover it, so it needs a decision: a
-dated exception, or a replacement. Upgrading wasmtime was not checked here.
+the binary). It is an exception until `tpt-wasm` replaces Wasmtime (LICENSE-POLICY.md).
+
+## Advisories: what ships and what is dev-only
+
+Checked with `cargo tree --target all -e all` on 2026-11-18.
+
+- **Shipped, `tpt-mcpbox`:** `rustls-rustcrypto` 0.0.2-alpha is a normal
+  dependency of `tpt-mcpbox-proxy` and `tpt-mcpbox-runtime`. It brings the old
+  `rustls-webpki` 0.102.8 (five advisories), `crypto-bigint` and `paste`. The
+  advisories are accepted in `tpt-mcpbox/deny.toml` until 2027-02-09.
+- **Shipped, `tpt-crypto-rustls`:** `rsa` 0.9.10 (RUSTSEC-2023-0071, Marvin). The
+  crate uses it only to verify signatures. The fix is rsa 0.10, which needs
+  digest 0.11 support in `tpt-crypto`. rsa 0.10.0 does not build against the
+  current digests, so that migration comes first.
+- **Dev-only, `tpt-crypto-rustls`:** the other six advisories come from
+  `rustls-rustcrypto` as a dev-dependency, the peer in the handshake tests. They
+  are accepted in its `deny.toml` until 2027-02-09 and do not ship.
+
+**Recommendation.**
+1. Replace `rustls-rustcrypto` in `tpt-mcpbox` with `tpt-crypto-rustls`, which is
+   the provider this project is building. That removes the alpha crate and all
+   seven advisories from the shipped tree. It is the only fix for the six
+   `rustls-webpki` 0.102 advisories, because no newer `rustls-rustcrypto` is
+   released. Target: before 2027-02-09, the existing expiry.
+2. Move `tpt-crypto` to digest 0.11 so `rsa` can go to 0.10. That clears the last
+   shipped advisory in `tpt-crypto-rustls`.
+3. Keep the dev-only acceptances in `tpt-crypto-rustls` until the test peer is
+   replaced. They do not affect shipped code.
+4. Have vitals read `deny.toml` ignores, with their reasons, so the CVE count
+   agrees with cargo-deny. Not done; it is a vitals change.
 
 The CI gate in each repo still runs the old `tpt-cargo-vitals` flags, because
 CI installs vitals from GitHub. The new flags go into CI only after the vitals
