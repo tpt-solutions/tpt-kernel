@@ -51,6 +51,8 @@ pub enum PagingError {
     /// A table entry points outside the pool, or maps a 1 GiB region, so the
     /// tables cannot be walked or split.
     Unsupported,
+    /// No 4 KiB page is mapped at the address.
+    NotMapped,
 }
 
 /// The four table levels, from the top.
@@ -194,6 +196,37 @@ impl<'a> PageTables<'a> {
         };
         self.pool[pt].0[p1] = (phys & ADDRESS_MASK) | flags | PRESENT;
         Ok(())
+    }
+
+    /// Removes the 4 KiB mapping at `virt` from the active walk and returns the
+    /// physical frame it named. The tables are not freed, and the caller must
+    /// invalidate the translation (see [`invlpg`]).
+    ///
+    /// # Errors
+    ///
+    /// [`PagingError::NotMapped`] if no 4 KiB page is mapped at `virt`, and
+    /// [`PagingError::Unsupported`] if the walk runs into a 1 GiB or 2 MiB mapping,
+    /// which is not split here.
+    pub fn unmap_4k(&mut self, virt: u64) -> Result<u64, PagingError> {
+        let (p4, p3, p2, p1) = indices(virt);
+        let pdpt = self
+            .present_child(self.root, p4)
+            .ok_or(PagingError::NotMapped)?;
+        let pd = self.present_child(pdpt, p3).ok_or(PagingError::NotMapped)?;
+        let pd_entry = self.pool[pd].0[p2];
+        if pd_entry & PRESENT == 0 {
+            return Err(PagingError::NotMapped);
+        }
+        if pd_entry & HUGE != 0 {
+            return Err(PagingError::Unsupported);
+        }
+        let pt = self.present_child(pd, p2).ok_or(PagingError::NotMapped)?;
+        let entry = self.pool[pt].0[p1];
+        if entry & PRESENT == 0 {
+            return Err(PagingError::NotMapped);
+        }
+        self.pool[pt].0[p1] = 0;
+        Ok(entry & ADDRESS_MASK)
     }
 
     /// Walks the tables and returns the physical address `virt` maps to, or
@@ -388,6 +421,20 @@ mod tests {
         let mut bits = [0u64; 1];
         let mut tables = PageTables::new(&mut pool, &mut bits).unwrap();
         assert_eq!(tables.select(3), Err(PagingError::Unsupported));
+    }
+
+    #[test]
+    fn unmap_removes_only_the_named_page() {
+        let mut pool = [Table::EMPTY; 8];
+        let mut bits = [0u64; 1];
+        let mut tables = PageTables::new(&mut pool, &mut bits).unwrap();
+        tables.map_4k(0x4000_0000, 0x9000, USER).unwrap();
+        tables.map_4k(0x4000_1000, 0xA000, USER).unwrap();
+        assert_eq!(tables.unmap_4k(0x4000_0000), Ok(0x9000));
+        assert_eq!(tables.translate(0x4000_0000), None);
+        assert_eq!(tables.translate(0x4000_1000), Some(0xA000));
+        assert_eq!(tables.unmap_4k(0x4000_0000), Err(PagingError::NotMapped));
+        assert_eq!(tables.unmap_4k(0x5000_0000), Err(PagingError::NotMapped));
     }
 
     #[test]
