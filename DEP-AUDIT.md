@@ -87,10 +87,11 @@ Checked with `cargo tree --target all -e all` on 2026-11-18.
   TLS 1.3 handshakes with example.com, www.google.com and api.github.com, each with
   certificate validation against the bundled roots. Only `rsa` remains, through
   `tpt-crypto-rustls`, and `deny.toml` accepts it until 2027-02-09.
-- **Caveat:** the migration puts an unaudited, client-only provider on the
-  outbound path. `tpt-crypto-rustls`'s README says not to use it to protect real
-  traffic until it is audited. `tpt-mcpbox` depends on it by path, so CI needs a
-  git dependency before it can build the repo.
+- **Decision (2026-11-18, the maintainer):** the unaudited, client-only provider
+  may carry real outbound traffic. `tpt-crypto-rustls`'s README asks for an audit
+  before that, and the owner has chosen to accept the risk for now. The audit
+  remains open. `tpt-mcpbox` now depends on it by git, pinned to `1827ad7`
+  (`0f76482`, pushed).
 - **Fixed locally, `tpt-crypto-rustls` (2026-11-18):** the shipped build moved
   from `rsa` 0.9.10 to 0.10 (`32eb56c`), with `sha2` 0.11 for the digest traits.
   `tpt-crypto` did not need a change. RUSTSEC-2023-0071 now reaches only
